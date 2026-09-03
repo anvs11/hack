@@ -1,6 +1,7 @@
 import type {
   PublicationDetail,
   PublicationList,
+  PublicationQuery,
   RegulatoryCaseDetail,
   Source,
 } from './types'
@@ -19,6 +20,17 @@ export class ApiError extends Error {
 
 function apiUrl(path: `/api/${string}`) {
   return `${API_BASE_URL}${path}`
+}
+
+function withQuery(path: `/api/${string}`, query: PublicationQuery) {
+  const searchParams = new URLSearchParams()
+
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined) searchParams.set(key, String(value))
+  })
+
+  const queryString = searchParams.toString()
+  return `${path}${queryString ? `?${queryString}` : ''}` as `/api/${string}`
 }
 
 async function request<T>(path: `/api/${string}`, signal?: AbortSignal): Promise<T> {
@@ -44,8 +56,8 @@ async function request<T>(path: `/api/${string}`, signal?: AbortSignal): Promise
 }
 
 export const api = {
-  listPublications: (signal?: AbortSignal) =>
-    request<PublicationList>('/api/publications', signal),
+  listPublications: (query: PublicationQuery = {}, signal?: AbortSignal) =>
+    request<PublicationList>(withQuery('/api/publications', query), signal),
   getPublication: (id: string, signal?: AbortSignal) =>
     request<PublicationDetail>(`/api/publications/${encodeURIComponent(id)}`, signal),
   getRegulatoryCase: (id: string, signal?: AbortSignal) =>
