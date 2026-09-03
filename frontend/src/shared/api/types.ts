@@ -1,4 +1,4 @@
-import type { components } from './schema'
+import type { components, operations } from './schema'
 
 export type PublicationCard = components['schemas']['PublicationCard']
 export type AnalysisResult = components['schemas']['AnalysisResult']
@@ -11,3 +11,7 @@ export type Source = components['schemas']['Source']
 export type ApiErrorBody = components['schemas']['Error']
 export type Category = components['schemas']['Category']
 export type Priority = components['schemas']['Priority']
+export type SourceType = components['schemas']['SourceType']
+export type PublicationQuery = NonNullable<
+  operations['listPublications']['parameters']['query']
+>
