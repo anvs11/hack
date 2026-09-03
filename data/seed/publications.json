@@ -1,0 +1,102 @@
+[
+  {
+    "id": "pub-001",
+    "source_id": "source-regulation",
+    "external_id": "demo-reg-001",
+    "title": "Проект требований к обработке данных вынесен на обсуждение",
+    "original_url": "https://example.org/regulation/demo-reg-001",
+    "published_at": "2026-09-01T07:30:00Z",
+    "content": "Демонстрационный материал: регулятор опубликовал проект требований к обработке данных и установил срок общественного обсуждения.",
+    "is_demo": true
+  },
+  {
+    "id": "pub-002",
+    "source_id": "source-duma",
+    "external_id": "demo-law-002",
+    "title": "Законопроект о маркировке AI-контента внесён в демо-набор",
+    "original_url": "https://example.org/duma/demo-law-002",
+    "published_at": "2026-09-01T08:00:00Z",
+    "content": "Демонстрационный материал: законопроект предлагает маркировать автоматически созданный контент и назначает переходный период.",
+    "is_demo": true
+  },
+  {
+    "id": "pub-003",
+    "source_id": "source-media-rss-1",
+    "external_id": "demo-media-003",
+    "title": "ИТ-компания объявила о запуске образовательной программы",
+    "original_url": "https://example.org/business/demo-media-003",
+    "published_at": "2026-09-01T08:20:00Z",
+    "content": "Демонстрационная новость: компания запускает бесплатную образовательную программу для региональных разработчиков.",
+    "is_demo": true
+  },
+  {
+    "id": "pub-004",
+    "source_id": "source-media-rss-2",
+    "external_id": "demo-tech-004",
+    "title": "Рынок облачных сервисов показал рост",
+    "original_url": "https://example.org/technology/demo-tech-004",
+    "published_at": "2026-09-01T09:00:00Z",
+    "content": "Демонстрационная новость: аналитики сообщили о росте спроса на отечественные облачные сервисы в корпоративном сегменте.",
+    "is_demo": true
+  },
+  {
+    "id": "pub-005",
+    "source_id": "source-telegram-archive",
+    "external_id": "demo-tg-005",
+    "title": "В отраслевом канале обсуждают возможное изменение требований",
+    "original_url": "https://example.org/telegram/demo-tg-005",
+    "published_at": "2026-09-01T09:15:00Z",
+    "content": "Демонстрационный архив: автор канала сообщает о возможном изменении требований без ссылки на официальный документ.",
+    "is_demo": true
+  },
+  {
+    "id": "pub-006",
+    "source_id": "source-regulation",
+    "external_id": "demo-reg-006",
+    "title": "Опубликовано уведомление о начале разработки проекта НПА",
+    "original_url": "https://example.org/regulation/demo-reg-006",
+    "published_at": "2026-09-01T10:00:00Z",
+    "content": "Демонстрационный материал: опубликовано уведомление о разработке проекта по требованиям к критической информационной инфраструктуре.",
+    "is_demo": true
+  },
+  {
+    "id": "pub-007",
+    "source_id": "source-duma",
+    "external_id": "demo-law-007",
+    "title": "Комитет рекомендовал принять законопроект в первом чтении",
+    "original_url": "https://example.org/duma/demo-law-007",
+    "published_at": "2026-09-01T10:30:00Z",
+    "content": "Демонстрационный материал: профильный комитет рекомендовал принять законопроект о цифровых платформах в первом чтении.",
+    "is_demo": true
+  },
+  {
+    "id": "pub-008",
+    "source_id": "source-media-rss-1",
+    "external_id": "demo-media-008",
+    "title": "Компания опровергла сообщение о сбое сервиса",
+    "original_url": "https://example.org/business/demo-media-008",
+    "published_at": "2026-09-01T11:00:00Z",
+    "content": "Демонстрационная новость: пресс-служба сообщила о штатной работе сервиса и назвала публикацию о массовом сбое недостоверной.",
+    "is_demo": true
+  },
+  {
+    "id": "pub-009",
+    "source_id": "source-media-rss-2",
+    "external_id": "demo-tech-009",
+    "title": "Конкурент представил платформу аналитики",
+    "original_url": "https://example.org/technology/demo-tech-009",
+    "published_at": "2026-09-01T11:30:00Z",
+    "content": "Демонстрационная новость: конкурент представил платформу мониторинга открытых источников для корпоративных клиентов.",
+    "is_demo": true
+  },
+  {
+    "id": "pub-010",
+    "source_id": "source-telegram-archive",
+    "external_id": "demo-tg-010",
+    "title": "Канал сообщил о возможной отраслевой льготе",
+    "original_url": "https://example.org/telegram/demo-tg-010",
+    "published_at": "2026-09-01T12:00:00Z",
+    "content": "Демонстрационный архив: канал пересказывает слух о новой льготе для ИТ-компаний; официальное подтверждение отсутствует.",
+    "is_demo": true
+  }
+]

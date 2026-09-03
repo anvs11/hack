@@ -1,0 +1,13 @@
+{
+  "id": "pub-001",
+  "source_id": "source-regulation",
+  "external_id": "demo-reg-001",
+  "title": "Проект требований к обработке данных вынесен на обсуждение",
+  "original_url": "https://example.org/regulation/demo-reg-001",
+  "published_at": "2026-09-01T07:30:00Z",
+  "collected_at": "2026-09-01T07:35:00Z",
+  "content": "Демонстрационный материал: регулятор опубликовал проект требований и установил срок общественного обсуждения.",
+  "content_hash": "sha256:96f1261f1bebf3d64e379a0e23bf774da16a08de83056aefeda661c8ed367c45",
+  "is_demo": true,
+  "latest_analysis_id": "analysis-001"
+}

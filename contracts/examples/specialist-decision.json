@@ -1,0 +1,13 @@
+{
+  "id": "decision-001",
+  "publication_id": "pub-001",
+  "analysis_id": "analysis-001",
+  "version": 1,
+  "status": "corrected",
+  "final_summary": "Проект требований опубликован для обсуждения; необходимо проверить его применимость и подготовить замечания до официального срока.",
+  "final_category": "regulation",
+  "final_priority": "high",
+  "comment": "Приоритет подтверждён после проверки первоисточника.",
+  "author_id": "user-gr-001",
+  "created_at": "2026-09-01T08:05:00Z"
+}

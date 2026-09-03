@@ -1,0 +1,42 @@
+[
+  {
+    "id": "source-regulation",
+    "name": "Портал проектов НПА (demo)",
+    "type": "regulator",
+    "url": "https://regulation.gov.ru/",
+    "enabled": true,
+    "is_demo": true
+  },
+  {
+    "id": "source-duma",
+    "name": "Система обеспечения законодательной деятельности (demo)",
+    "type": "regulator",
+    "url": "https://sozd.duma.gov.ru/",
+    "enabled": true,
+    "is_demo": true
+  },
+  {
+    "id": "source-media-rss-1",
+    "name": "Деловые новости — RSS fixture",
+    "type": "rss",
+    "url": "https://example.org/feeds/business.xml",
+    "enabled": true,
+    "is_demo": true
+  },
+  {
+    "id": "source-media-rss-2",
+    "name": "Технологические новости — RSS fixture",
+    "type": "rss",
+    "url": "https://example.org/feeds/technology.xml",
+    "enabled": true,
+    "is_demo": true
+  },
+  {
+    "id": "source-telegram-archive",
+    "name": "Отраслевой Telegram-архив (demo)",
+    "type": "telegram_archive",
+    "url": "https://example.org/telegram/archive",
+    "enabled": true,
+    "is_demo": true
+  }
+]
