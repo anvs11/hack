@@ -3,11 +3,18 @@
 *.iml
 .vscode/
 
-# Данные
-data/
+# Данные: seed и обезличенный eval версионируются, локальные БД — нет
+data/*
+!data/seed/
+!data/seed/**
+!data/eval/
+!data/eval/**
 *.csv
 *.parquet
 *.pkl
+*.sqlite
+*.sqlite3
+.local/
 
 # Python
 __pycache__/

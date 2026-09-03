@@ -1,0 +1,735 @@
+openapi: 3.1.0
+info:
+  title: PR/GR AI Analytics API
+  version: 0.1.0
+  description: >-
+    Зафиксированный API нулевого этапа. Изменяется только по процедуре protected
+    context из rules.md.
+servers:
+  - url: http://127.0.0.1:8000
+    description: Local backend
+tags:
+  - name: system
+  - name: publications
+  - name: sources
+  - name: reviews
+  - name: regulatory-cases
+  - name: import
+
+paths:
+  /api/health:
+    get:
+      tags: [system]
+      operationId: getHealth
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+
+  /api/publications:
+    get:
+      tags: [publications]
+      operationId: listPublications
+      parameters:
+        - $ref: "#/components/parameters/SearchQuery"
+        - name: source_id
+          in: query
+          schema: {type: string}
+        - name: source_type
+          in: query
+          schema: {$ref: "#/components/schemas/SourceType"}
+        - name: published_from
+          in: query
+          schema: {type: string, format: date-time}
+        - name: published_to
+          in: query
+          schema: {type: string, format: date-time}
+        - name: category
+          in: query
+          schema: {$ref: "#/components/schemas/Category"}
+        - name: proposed_priority
+          in: query
+          schema: {$ref: "#/components/schemas/Priority"}
+        - name: needs_review
+          in: query
+          schema: {type: boolean}
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Filtered publication feed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicationList"
+
+  /api/publications/{publication_id}:
+    get:
+      tags: [publications]
+      operationId: getPublication
+      parameters:
+        - $ref: "#/components/parameters/PublicationId"
+      responses:
+        "200":
+          description: Publication card with latest analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicationDetail"
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  /api/publications/{publication_id}/analyze:
+    post:
+      tags: [publications]
+      operationId: analyzePublication
+      parameters:
+        - $ref: "#/components/parameters/PublicationId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeRequest"
+      responses:
+        "201":
+          description: New immutable analysis version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisResult"
+              examples:
+                replay:
+                  externalValue: ./examples/ai-analysis.json
+        "404": {$ref: "#/components/responses/NotFound"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+
+  /api/publications/{publication_id}/reviews:
+    post:
+      tags: [reviews]
+      operationId: createSpecialistDecision
+      parameters:
+        - $ref: "#/components/parameters/PublicationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SpecialistDecisionCreate"
+      responses:
+        "201":
+          description: New immutable specialist decision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpecialistDecision"
+              examples:
+                corrected:
+                  externalValue: ./examples/specialist-decision.json
+        "404": {$ref: "#/components/responses/NotFound"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+
+  /api/publications/{publication_id}/history:
+    get:
+      tags: [reviews]
+      operationId: getPublicationHistory
+      parameters:
+        - $ref: "#/components/parameters/PublicationId"
+      responses:
+        "200":
+          description: Immutable analysis and decision history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicationHistory"
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  /api/sources:
+    get:
+      tags: [sources]
+      operationId: listSources
+      responses:
+        "200":
+          description: Configured sources
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Source"}
+    post:
+      tags: [sources]
+      operationId: createSource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SourceCreate"}
+      responses:
+        "201":
+          description: Source created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Source"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+
+  /api/sources/{source_id}:
+    patch:
+      tags: [sources]
+      operationId: updateSource
+      parameters:
+        - $ref: "#/components/parameters/SourceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SourcePatch"}
+      responses:
+        "200":
+          description: Source updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Source"}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  /api/sources/{source_id}/refresh:
+    post:
+      tags: [sources]
+      operationId: refreshSource
+      parameters:
+        - $ref: "#/components/parameters/SourceId"
+      responses:
+        "202":
+          description: Collection scheduled
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/JobAccepted"}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  /api/import/seed:
+    post:
+      tags: [import]
+      operationId: importSeed
+      responses:
+        "200":
+          description: Idempotent offline import result
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ImportResult"}
+
+  /api/collect/run:
+    post:
+      tags: [import]
+      operationId: runCollection
+      responses:
+        "202":
+          description: Collection scheduled for enabled sources
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/JobAccepted"}
+
+  /api/regulatory-cases:
+    get:
+      tags: [regulatory-cases]
+      operationId: listRegulatoryCases
+      responses:
+        "200":
+          description: Regulatory cases
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/RegulatoryCase"}
+    post:
+      tags: [regulatory-cases]
+      operationId: createRegulatoryCase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RegulatoryCaseCreate"}
+      responses:
+        "201":
+          description: Regulatory case created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RegulatoryCase"}
+              examples:
+                draft:
+                  externalValue: ./examples/regulatory-case.json
+        "422": {$ref: "#/components/responses/ValidationError"}
+
+  /api/regulatory-cases/{case_id}:
+    get:
+      tags: [regulatory-cases]
+      operationId: getRegulatoryCase
+      parameters:
+        - $ref: "#/components/parameters/CaseId"
+      responses:
+        "200":
+          description: Case and append-only timeline
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RegulatoryCaseDetail"}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  /api/regulatory-cases/{case_id}/publications:
+    post:
+      tags: [regulatory-cases]
+      operationId: linkPublicationToCase
+      parameters:
+        - $ref: "#/components/parameters/CaseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PublicationLink"}
+      responses:
+        "204": {description: Publication linked}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  /api/regulatory-cases/{case_id}/events:
+    post:
+      tags: [regulatory-cases]
+      operationId: appendLifecycleEvent
+      parameters:
+        - $ref: "#/components/parameters/CaseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LifecycleEventCreate"}
+      responses:
+        "201":
+          description: Lifecycle event appended
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LifecycleEvent"}
+              examples:
+                draft:
+                  externalValue: ./examples/lifecycle-event.json
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409":
+          description: Invalid lifecycle transition
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+
+components:
+  parameters:
+    PublicationId:
+      name: publication_id
+      in: path
+      required: true
+      schema: {type: string}
+    SourceId:
+      name: source_id
+      in: path
+      required: true
+      schema: {type: string}
+    CaseId:
+      name: case_id
+      in: path
+      required: true
+      schema: {type: string}
+    SearchQuery:
+      name: q
+      in: query
+      description: Full-text query over title, content, tags, and entities
+      schema: {type: string, minLength: 1}
+    Limit:
+      name: limit
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+    Offset:
+      name: offset
+      in: query
+      schema: {type: integer, minimum: 0, default: 0}
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+
+  schemas:
+    Health:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: {type: string, const: ok}
+
+    Error:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code: {type: string}
+        message: {type: string}
+        details: {type: object, additionalProperties: true}
+
+    SourceType:
+      type: string
+      enum: [rss, regulator, telegram, telegram_archive, file, seed]
+
+    Category:
+      type: string
+      enum: [regulation, reputation, competitor, trend, unknown]
+
+    Priority:
+      type: string
+      enum: [critical, high, medium, low, unknown]
+
+    LifecycleStage:
+      type: string
+      enum: [draft, introduced, adopted, published, effective, amended, repealed]
+
+    SourceCreate:
+      type: object
+      additionalProperties: false
+      required: [name, type, url]
+      properties:
+        name: {type: string, minLength: 1}
+        type: {$ref: "#/components/schemas/SourceType"}
+        url: {type: string, format: uri}
+        enabled: {type: boolean, default: true}
+
+    SourcePatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: {type: string, minLength: 1}
+        url: {type: string, format: uri}
+        enabled: {type: boolean}
+
+    Source:
+      type: object
+      additionalProperties: false
+      required: [id, name, type, url, enabled]
+      properties:
+        id: {type: string}
+        name: {type: string, minLength: 1}
+        type: {$ref: "#/components/schemas/SourceType"}
+        url: {type: string, format: uri}
+        enabled: {type: boolean}
+        last_checked_at: {type: [string, "null"], format: date-time}
+        last_success_at: {type: [string, "null"], format: date-time}
+        last_error: {type: [string, "null"]}
+        is_demo: {type: boolean, default: false}
+
+    Entity:
+      type: object
+      additionalProperties: false
+      required: [type, value]
+      properties:
+        type: {type: string}
+        value: {type: string}
+
+    Evidence:
+      type: object
+      additionalProperties: false
+      required: [claim, quote]
+      properties:
+        claim: {type: string}
+        quote: {type: string, maxLength: 500}
+
+    Criteria:
+      type: object
+      additionalProperties: false
+      required: [K1, K2, K3, K4, K5, K6, H1, H2, H3, H4]
+      properties:
+        K1: {type: integer, minimum: 0, maximum: 3}
+        K2: {type: integer, minimum: 0, maximum: 3}
+        K3: {type: integer, minimum: 0, maximum: 3}
+        K4: {type: integer, minimum: 0, maximum: 3}
+        K5: {type: integer, minimum: 0, maximum: 3}
+        K6: {type: integer, minimum: 0, maximum: 3}
+        H1: {type: boolean}
+        H2: {type: boolean}
+        H3: {type: boolean}
+        H4: {type: boolean}
+
+    PublicationCard:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - source_id
+        - external_id
+        - title
+        - original_url
+        - published_at
+        - collected_at
+        - content
+        - content_hash
+        - is_demo
+      properties:
+        id: {type: string}
+        source_id: {type: string}
+        external_id: {type: string}
+        title: {type: string}
+        original_url: {type: string, format: uri}
+        published_at: {type: string, format: date-time}
+        collected_at: {type: string, format: date-time}
+        content: {type: string}
+        content_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        is_demo: {type: boolean}
+        latest_analysis_id: {type: [string, "null"]}
+
+    AnalysisResult:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - publication_id
+        - version
+        - analyzer
+        - model
+        - prompt_version
+        - input_hash
+        - summary
+        - facts
+        - entities
+        - category
+        - proposed_priority
+        - criteria
+        - score
+        - evidence
+        - uncertainty
+        - needs_review
+        - created_at
+      properties:
+        id: {type: string}
+        publication_id: {type: string}
+        version: {type: integer, minimum: 1}
+        analyzer: {type: string, enum: [replay, live_llm]}
+        model: {type: string}
+        prompt_version: {type: string}
+        input_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        summary: {type: string}
+        facts: {type: array, items: {type: string}}
+        entities: {type: array, items: {$ref: "#/components/schemas/Entity"}}
+        category: {$ref: "#/components/schemas/Category"}
+        proposed_priority: {$ref: "#/components/schemas/Priority"}
+        criteria: {$ref: "#/components/schemas/Criteria"}
+        score: {type: integer, minimum: 0}
+        evidence: {type: array, items: {$ref: "#/components/schemas/Evidence"}}
+        uncertainty: {type: number, minimum: 0, maximum: 1}
+        needs_review: {type: boolean}
+        created_at: {type: string, format: date-time}
+
+    PublicationDetail:
+      type: object
+      additionalProperties: false
+      required: [publication]
+      properties:
+        publication: {$ref: "#/components/schemas/PublicationCard"}
+        latest_analysis:
+          oneOf:
+            - $ref: "#/components/schemas/AnalysisResult"
+            - type: "null"
+        latest_decision:
+          oneOf:
+            - $ref: "#/components/schemas/SpecialistDecision"
+            - type: "null"
+
+    PublicationList:
+      type: object
+      additionalProperties: false
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/PublicationDetail"}
+        total: {type: integer, minimum: 0}
+        limit: {type: integer, minimum: 1}
+        offset: {type: integer, minimum: 0}
+
+    AnalyzeRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        analyzer: {type: string, enum: [replay, live_llm], default: replay}
+
+    DecisionStatus:
+      type: string
+      enum: [confirmed, corrected, rejected]
+
+    SpecialistDecisionCreate:
+      type: object
+      additionalProperties: false
+      required: [analysis_id, status, final_category, final_priority, author_id]
+      properties:
+        analysis_id: {type: string}
+        status: {$ref: "#/components/schemas/DecisionStatus"}
+        final_summary: {type: [string, "null"]}
+        final_category: {$ref: "#/components/schemas/Category"}
+        final_priority: {$ref: "#/components/schemas/Priority"}
+        comment: {type: [string, "null"]}
+        author_id: {type: string}
+
+    SpecialistDecision:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - publication_id
+        - analysis_id
+        - version
+        - status
+        - final_category
+        - final_priority
+        - author_id
+        - created_at
+      properties:
+        id: {type: string}
+        publication_id: {type: string}
+        analysis_id: {type: string}
+        version: {type: integer, minimum: 1}
+        status: {$ref: "#/components/schemas/DecisionStatus"}
+        final_summary: {type: [string, "null"]}
+        final_category: {$ref: "#/components/schemas/Category"}
+        final_priority: {$ref: "#/components/schemas/Priority"}
+        comment: {type: [string, "null"]}
+        author_id: {type: string}
+        created_at: {type: string, format: date-time}
+
+    PublicationHistory:
+      type: object
+      additionalProperties: false
+      required: [publication_id, analyses, decisions]
+      properties:
+        publication_id: {type: string}
+        analyses:
+          type: array
+          items: {$ref: "#/components/schemas/AnalysisResult"}
+        decisions:
+          type: array
+          items: {$ref: "#/components/schemas/SpecialistDecision"}
+
+    RegulatoryCaseCreate:
+      type: object
+      additionalProperties: false
+      required: [title, registration_number, current_stage, responsible_user_id]
+      properties:
+        title: {type: string}
+        registration_number: {type: string}
+        current_stage: {$ref: "#/components/schemas/LifecycleStage"}
+        responsible_user_id: {type: string}
+        related_publication_ids:
+          type: array
+          items: {type: string}
+          default: []
+
+    RegulatoryCase:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - title
+        - registration_number
+        - current_stage
+        - responsible_user_id
+        - related_publication_ids
+        - created_at
+        - updated_at
+      properties:
+        id: {type: string}
+        title: {type: string}
+        registration_number: {type: string}
+        current_stage: {$ref: "#/components/schemas/LifecycleStage"}
+        responsible_user_id: {type: string}
+        related_publication_ids:
+          type: array
+          items: {type: string}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+
+    LifecycleEventCreate:
+      type: object
+      additionalProperties: false
+      required:
+        - stage
+        - effective_at
+        - confirmation_url
+        - confirmation_source_type
+        - author_id
+      properties:
+        stage: {$ref: "#/components/schemas/LifecycleStage"}
+        effective_at: {type: string, format: date-time}
+        confirmation_url: {type: string, format: uri}
+        confirmation_source_type:
+          type: string
+          enum: [regulator, official_publication]
+        comment: {type: [string, "null"]}
+        author_id: {type: string}
+
+    LifecycleEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - regulatory_case_id
+        - stage
+        - effective_at
+        - confirmation_url
+        - confirmation_source_type
+        - author_id
+        - created_at
+      properties:
+        id: {type: string}
+        regulatory_case_id: {type: string}
+        stage: {$ref: "#/components/schemas/LifecycleStage"}
+        effective_at: {type: string, format: date-time}
+        confirmation_url: {type: string, format: uri}
+        confirmation_source_type:
+          type: string
+          enum: [regulator, official_publication]
+        comment: {type: [string, "null"]}
+        author_id: {type: string}
+        created_at: {type: string, format: date-time}
+
+    RegulatoryCaseDetail:
+      type: object
+      additionalProperties: false
+      required: [case, timeline]
+      properties:
+        case: {$ref: "#/components/schemas/RegulatoryCase"}
+        timeline:
+          type: array
+          items: {$ref: "#/components/schemas/LifecycleEvent"}
+
+    PublicationLink:
+      type: object
+      additionalProperties: false
+      required: [publication_id]
+      properties:
+        publication_id: {type: string}
+
+    ImportResult:
+      type: object
+      additionalProperties: false
+      required: [sources, publications, analyses, duplicates]
+      properties:
+        sources: {type: integer, minimum: 0}
+        publications: {type: integer, minimum: 0}
+        analyses: {type: integer, minimum: 0}
+        duplicates: {type: integer, minimum: 0}
+
+    JobAccepted:
+      type: object
+      additionalProperties: false
+      required: [job_id, status]
+      properties:
+        job_id: {type: string}
+        status: {type: string, const: accepted}
