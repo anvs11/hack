@@ -4,6 +4,7 @@ import { api } from '../shared/api/client'
 import { useApiResource } from '../shared/api/useApiResource'
 import { formatCategory, formatDate, formatPriority } from '../shared/format'
 import { PageState } from '../shared/PageState'
+import { RevealText } from '../shared/RevealText'
 
 export function PublicationPage() {
   const { id = '' } = useParams()
@@ -24,14 +25,14 @@ export function PublicationPage() {
   const { publication, latest_analysis: analysis } = state.data
 
   return (
-    <article>
-      <Link className="back-link" to="/feed">← Вернуться в ленту</Link>
+    <article className="detail-page">
+      <Link className="back-link" to="/feed"><span aria-hidden="true">←</span> Вернуться в ленту</Link>
       <header className="detail-heading">
         <div className="card-meta">
           <span>{publication.source_id}</span>
           <span>{formatDate(publication.published_at)}</span>
         </div>
-        <h1>{publication.title}</h1>
+        <RevealText lines={[publication.title]} />
         <a className="source-link" href={publication.original_url} target="_blank" rel="noreferrer">
           Открыть первоисточник ↗
         </a>
@@ -39,6 +40,7 @@ export function PublicationPage() {
 
       <div className="detail-grid">
         <section className="content-panel">
+          <div className="panel-index" aria-hidden="true">01</div>
           <p className="eyebrow">Исходный материал</p>
           <h2>Содержание</h2>
           <p>{publication.content}</p>
@@ -46,6 +48,7 @@ export function PublicationPage() {
 
         {analysis ? (
           <section className="analysis-panel">
+            <div className="panel-index" aria-hidden="true">02</div>
             <p className="eyebrow">AI-анализ · v{analysis.version}</p>
             <h2>Краткое резюме</h2>
             <p>{analysis.summary}</p>
