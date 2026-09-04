@@ -1,4 +1,5 @@
 import type {
+  CollectionReport,
   LifecycleEvent,
   LifecycleEventCreate,
   PublicationDetail,
@@ -8,6 +9,8 @@ import type {
   RegulatoryCaseDetail,
   RegulatoryCase,
   Source,
+  SourceCreate,
+  SourcePatch,
   SpecialistDecision,
   SpecialistDecisionCreate,
 } from './types'
@@ -40,7 +43,7 @@ function withQuery(path: `/api/${string}`, query: PublicationQuery) {
 }
 
 type RequestOptions = {
-  method?: 'GET' | 'POST' | 'PUT'
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH'
   body?: unknown
   signal?: AbortSignal
 }
@@ -115,4 +118,17 @@ export const api = {
     { method: 'POST', body: event, signal },
   ),
   listSources: (signal?: AbortSignal) => request<Source[]>('/api/sources', { signal }),
+  createSource: (payload: SourceCreate, signal?: AbortSignal) =>
+    request<Source>('/api/sources', { method: 'POST', body: payload, signal }),
+  updateSource: (sourceId: string, patch: SourcePatch, signal?: AbortSignal) =>
+    request<Source>(`/api/sources/${encodeURIComponent(sourceId)}`, {
+      method: 'PATCH',
+      body: patch,
+      signal,
+    }),
+  collectSource: (sourceId: string, signal?: AbortSignal) =>
+    request<CollectionReport>(
+      `/api/sources/${encodeURIComponent(sourceId)}/collections`,
+      { method: 'POST', signal },
+    ),
 }
