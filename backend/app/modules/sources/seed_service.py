@@ -31,7 +31,8 @@ def import_demo_seed(engine: Engine) -> SeedImportStats:
     sources = load_json("sources.json")
     publications = load_json("publications.json")
     analyses = load_json("replay-analyses.json")
-    validate_seed(sources, publications, analyses)
+    regulatory_cases = load_json("regulatory-cases.json")
+    validate_seed(sources, publications, analyses, regulatory_cases)
 
     publication_ids = {item["id"] for item in publications}
     with Session(engine) as session:

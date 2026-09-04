@@ -46,7 +46,10 @@ def test_create_schema_builds_the_current_tables(tmp_path: Path) -> None:
         "analysis_versions",
         "duplicate_candidates",
         "publications",
+        "regulatory_case_publications",
+        "regulatory_cases",
         "sources",
+        "specialist_decisions",
     }
     assert _counts(engine) == (0, 0, 0)
     engine.dispose()

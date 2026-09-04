@@ -11,7 +11,9 @@ from sqlalchemy import Engine
 from backend.app.db import build_session_factory, create_schema, default_engine
 from backend.app.errors import install_error_handlers
 from backend.app.modules.analysis.router import router as analysis_router
+from backend.app.modules.decisions.router import router as decisions_router
 from backend.app.modules.publications.router import router as publications_router
+from backend.app.modules.regulatory_cases.router import router as regulatory_cases_router
 from backend.app.modules.sources.router import router as sources_router
 
 
@@ -54,7 +56,9 @@ def create_app(database_engine: Engine | None = None) -> FastAPI:
     )
     install_error_handlers(application)
     application.include_router(analysis_router)
+    application.include_router(decisions_router)
     application.include_router(publications_router)
+    application.include_router(regulatory_cases_router)
     application.include_router(sources_router)
 
     @application.get(

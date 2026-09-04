@@ -1,9 +1,13 @@
 import type {
   PublicationDetail,
+  PublicationHistory,
   PublicationList,
   PublicationQuery,
   RegulatoryCaseDetail,
+  RegulatoryCase,
   Source,
+  SpecialistDecision,
+  SpecialistDecisionCreate,
 } from './types'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
@@ -33,10 +37,21 @@ function withQuery(path: `/api/${string}`, query: PublicationQuery) {
   return `${path}${queryString ? `?${queryString}` : ''}` as `/api/${string}`
 }
 
-async function request<T>(path: `/api/${string}`, signal?: AbortSignal): Promise<T> {
+type RequestOptions = {
+  method?: 'GET' | 'POST' | 'PUT'
+  body?: unknown
+  signal?: AbortSignal
+}
+
+async function request<T>(path: `/api/${string}`, options: RequestOptions = {}): Promise<T> {
   const response = await fetch(apiUrl(path), {
-    headers: { Accept: 'application/json' },
-    signal,
+    method: options.method ?? 'GET',
+    headers: {
+      Accept: 'application/json',
+      ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    signal: options.signal,
   })
 
   if (!response.ok) {
@@ -52,18 +67,42 @@ async function request<T>(path: `/api/${string}`, signal?: AbortSignal): Promise
     throw new ApiError(message, response.status)
   }
 
+  if (response.status === 204) return undefined as T
   return (await response.json()) as T
 }
 
 export const api = {
   listPublications: (query: PublicationQuery = {}, signal?: AbortSignal) =>
-    request<PublicationList>(withQuery('/api/publications', query), signal),
+    request<PublicationList>(withQuery('/api/publications', query), { signal }),
   getPublication: (id: string, signal?: AbortSignal) =>
-    request<PublicationDetail>(`/api/publications/${encodeURIComponent(id)}`, signal),
+    request<PublicationDetail>(`/api/publications/${encodeURIComponent(id)}`, { signal }),
+  getPublicationHistory: (id: string, signal?: AbortSignal) =>
+    request<PublicationHistory>(
+      `/api/publications/${encodeURIComponent(id)}/history`,
+      { signal },
+    ),
+  createSpecialistDecision: (
+    publicationId: string,
+    decision: SpecialistDecisionCreate,
+    signal?: AbortSignal,
+  ) => request<SpecialistDecision>(
+    `/api/publications/${encodeURIComponent(publicationId)}/decisions`,
+    { method: 'POST', body: decision, signal },
+  ),
+  listRegulatoryCases: (signal?: AbortSignal) =>
+    request<RegulatoryCase[]>('/api/regulatory-cases', { signal }),
+  linkPublicationToCase: (
+    caseId: string,
+    publicationId: string,
+    signal?: AbortSignal,
+  ) => request<void>(
+    `/api/regulatory-cases/${encodeURIComponent(caseId)}/publications/${encodeURIComponent(publicationId)}`,
+    { method: 'PUT', signal },
+  ),
   getRegulatoryCase: (id: string, signal?: AbortSignal) =>
     request<RegulatoryCaseDetail>(
       `/api/regulatory-cases/${encodeURIComponent(id)}`,
-      signal,
+      { signal },
     ),
-  listSources: (signal?: AbortSignal) => request<Source[]>('/api/sources', signal),
+  listSources: (signal?: AbortSignal) => request<Source[]>('/api/sources', { signal }),
 }

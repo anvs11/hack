@@ -4,14 +4,30 @@ import type {
   Category,
   Priority,
   PublicationList,
+  SpecialistDecision,
+  SpecialistDecisionCreate,
   SourceType,
 } from '../shared/api/types'
 import { sortPublications } from '../shared/publications'
 import {
   publicationDetails,
+  publicationHistory,
   regulatoryCaseDetail,
+  regulatoryCases,
   sources,
 } from './fixtures'
+
+let decisions: SpecialistDecision[] = [...publicationHistory.decisions]
+let linkedPublicationIds = new Set(
+  regulatoryCaseDetail.regulatory_case.related_publication_ids,
+)
+
+export function resetMockState() {
+  decisions = [...publicationHistory.decisions]
+  linkedPublicationIds = new Set(
+    regulatoryCaseDetail.regulatory_case.related_publication_ids,
+  )
+}
 
 const notFound = (resource: string) =>
   HttpResponse.json(
@@ -70,17 +86,94 @@ export const handlers = [
     } satisfies PublicationList)
   }),
 
+  http.get('*/api/publications/:publicationId/history', ({ params }) => {
+    if (params.publicationId !== publicationHistory.publication_id) {
+      const detail = publicationDetails.find(
+        ({ publication }) => publication.id === params.publicationId,
+      )
+      return detail
+        ? HttpResponse.json({
+            publication_id: detail.publication.id,
+            analyses: detail.latest_analysis ? [detail.latest_analysis] : [],
+            decisions: [],
+          })
+        : notFound('Публикация')
+    }
+    return HttpResponse.json({ ...publicationHistory, decisions })
+  }),
+
+  http.post('*/api/publications/:publicationId/decisions', async ({ params, request }) => {
+    const detail = publicationDetails.find(
+      ({ publication }) => publication.id === params.publicationId,
+    )
+    if (!detail) return notFound('Публикация')
+
+    const body = await request.json() as SpecialistDecisionCreate
+    const availableAnalyses = params.publicationId === publicationHistory.publication_id
+      ? publicationHistory.analyses
+      : detail.latest_analysis ? [detail.latest_analysis] : []
+    const analysis = availableAnalyses.find((item) => item.id === body.analysis_id)
+    if (!analysis) {
+      return HttpResponse.json(
+        { code: 'validation_error', message: 'Версия анализа не принадлежит публикации' },
+        { status: 422 },
+      )
+    }
+
+    const decision = {
+      ...body,
+      final_summary: body.final_summary ?? null,
+      comment: body.comment ?? null,
+      id: `decision-mock-${decisions.length + 1}`,
+      publication_id: String(params.publicationId),
+      version: decisions.filter(
+        (item) => item.publication_id === params.publicationId,
+      ).length + 1,
+      created_at: new Date().toISOString(),
+    } satisfies SpecialistDecision
+    decisions = [...decisions, decision]
+    return HttpResponse.json(decision, { status: 201 })
+  }),
+
   http.get('*/api/publications/:publicationId', ({ params }) => {
     const detail = publicationDetails.find(
       ({ publication: item }) => item.id === params.publicationId,
     )
 
-    return detail ? HttpResponse.json(detail) : notFound('Публикация')
+    if (!detail) return notFound('Публикация')
+    const latestDecision = decisions
+      .filter((item) => item.publication_id === params.publicationId)
+      .at(-1) ?? detail.latest_decision
+    return HttpResponse.json({ ...detail, latest_decision: latestDecision })
+  }),
+
+  http.get('*/api/regulatory-cases', () => HttpResponse.json(
+    regulatoryCases.map((item) => ({
+      ...item,
+      related_publication_ids: [...linkedPublicationIds],
+    })),
+  )),
+
+  http.put('*/api/regulatory-cases/:caseId/publications/:publicationId', ({ params }) => {
+    const regulatoryCase = regulatoryCases.find((item) => item.id === params.caseId)
+    const publication = publicationDetails.find(
+      ({ publication: item }) => item.id === params.publicationId,
+    )
+    if (!regulatoryCase) return notFound('Регуляторный кейс')
+    if (!publication) return notFound('Публикация')
+    linkedPublicationIds.add(String(params.publicationId))
+    return new HttpResponse(null, { status: 204 })
   }),
 
   http.get('*/api/regulatory-cases/:caseId', ({ params }) =>
     params.caseId === regulatoryCaseDetail.regulatory_case.id
-      ? HttpResponse.json(regulatoryCaseDetail)
+      ? HttpResponse.json({
+          ...regulatoryCaseDetail,
+          regulatory_case: {
+            ...regulatoryCaseDetail.regulatory_case,
+            related_publication_ids: [...linkedPublicationIds],
+          },
+        })
       : notFound('Регуляторный кейс'),
   ),
 
