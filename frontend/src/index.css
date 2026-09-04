@@ -14,12 +14,13 @@
   --border: rgba(9, 10, 13, 0.12);
   --soft-blue: #e8ebff;
   --warm-alert: #d34c32;
+  --tg-chrome-color: var(--background);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
-body { margin: 0; min-width: 320px; min-height: 100vh; overflow-x: hidden; }
+body { margin: 0; min-width: 320px; min-height: 100vh; min-height: 100dvh; overflow-x: hidden; }
 button, input, textarea, select { font: inherit; }
 a { color: inherit; }
 h1, h2, h3, p { margin-top: 0; }
@@ -29,7 +30,15 @@ h2 { font-size: clamp(1.45rem, 2vw, 2.25rem); line-height: 1.08; letter-spacing:
 :focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 4px; }
 ::selection { color: white; background: var(--accent); }
 
-.app-shell { min-height: 100vh; }
+.app-shell {
+  min-height: 100vh;
+  min-height: var(--tg-viewport-stable-height, 100dvh);
+  padding:
+    max(env(safe-area-inset-top, 0px), var(--tg-app-safe-area-inset-top, 0px))
+    max(env(safe-area-inset-right, 0px), var(--tg-app-safe-area-inset-right, 0px))
+    max(env(safe-area-inset-bottom, 0px), var(--tg-app-safe-area-inset-bottom, 0px))
+    max(env(safe-area-inset-left, 0px), var(--tg-app-safe-area-inset-left, 0px));
+}
 .app-header {
   width: min(100% - 112px, 1440px);
   min-height: 112px;
@@ -54,7 +63,7 @@ h2 { font-size: clamp(1.45rem, 2vw, 2.25rem); line-height: 1.08; letter-spacing:
 .primary-nav {
   position: sticky;
   z-index: 10;
-  top: 14px;
+  top: calc(14px + max(env(safe-area-inset-top, 0px), var(--tg-app-safe-area-inset-top, 0px)));
   width: fit-content;
   max-width: calc(100% - 32px);
   margin: 0 auto;
@@ -278,7 +287,7 @@ h2 { font-size: clamp(1.45rem, 2vw, 2.25rem); line-height: 1.08; letter-spacing:
   .header-actions { gap: 0; }
   .workspace-pill { display: none; }
   .menu-pill { min-height: 38px; padding: 0 14px; }
-  .primary-nav { top: 8px; max-width: calc(100% - 20px); margin-inline: 10px; }
+  .primary-nav { top: calc(8px + max(env(safe-area-inset-top, 0px), var(--tg-app-safe-area-inset-top, 0px))); max-width: calc(100% - 20px); margin-inline: 10px; }
   .primary-nav a { padding: 9px 12px; font-size: .62rem; }
   .page-container { padding: 46px 0 80px; }
   .app-footer { align-items: flex-start; flex-direction: column; line-height: 1.5; }

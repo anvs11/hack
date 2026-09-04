@@ -79,7 +79,7 @@ export const handlers = [
   }),
 
   http.get('*/api/regulatory-cases/:caseId', ({ params }) =>
-    params.caseId === regulatoryCaseDetail.case.id
+    params.caseId === regulatoryCaseDetail.regulatory_case.id
       ? HttpResponse.json(regulatoryCaseDetail)
       : notFound('Регуляторный кейс'),
   ),

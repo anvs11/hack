@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
   title: PR/GR AI Analytics API
-  version: 0.1.0
+  version: 0.2.0
   description: >-
-    Зафиксированный API нулевого этапа. Изменяется только по процедуре protected
-    context из rules.md.
+    API модульного MVP: публикации, AI-анализ, решения специалистов, источники,
+    синхронный сбор и жизненный цикл НПА.
 servers:
   - url: http://127.0.0.1:8000
     description: Local backend
@@ -12,9 +12,10 @@ tags:
   - name: system
   - name: publications
   - name: sources
-  - name: reviews
+  - name: decisions
   - name: regulatory-cases
-  - name: import
+  - name: collections
+  - name: demo
 
 paths:
   /api/health:
@@ -81,10 +82,10 @@ paths:
                 $ref: "#/components/schemas/PublicationDetail"
         "404": {$ref: "#/components/responses/NotFound"}
 
-  /api/publications/{publication_id}/analyze:
+  /api/publications/{publication_id}/analyses:
     post:
       tags: [publications]
-      operationId: analyzePublication
+      operationId: createPublicationAnalysis
       parameters:
         - $ref: "#/components/parameters/PublicationId"
       requestBody:
@@ -92,23 +93,23 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AnalyzeRequest"
+              $ref: "#/components/schemas/AnalysisCreate"
       responses:
         "201":
           description: New immutable analysis version
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AnalysisResult"
+                $ref: "#/components/schemas/AnalysisVersion"
               examples:
                 replay:
-                  externalValue: ./examples/ai-analysis.json
+                  externalValue: ./examples/analysis-version.json
         "404": {$ref: "#/components/responses/NotFound"}
         "422": {$ref: "#/components/responses/ValidationError"}
 
-  /api/publications/{publication_id}/reviews:
+  /api/publications/{publication_id}/decisions:
     post:
-      tags: [reviews]
+      tags: [decisions]
       operationId: createSpecialistDecision
       parameters:
         - $ref: "#/components/parameters/PublicationId"
@@ -133,7 +134,7 @@ paths:
 
   /api/publications/{publication_id}/history:
     get:
-      tags: [reviews]
+      tags: [decisions]
       operationId: getPublicationHistory
       parameters:
         - $ref: "#/components/parameters/PublicationId"
@@ -193,41 +194,50 @@ paths:
               schema: {$ref: "#/components/schemas/Source"}
         "404": {$ref: "#/components/responses/NotFound"}
 
-  /api/sources/{source_id}/refresh:
+  /api/sources/{source_id}/collections:
     post:
-      tags: [sources]
-      operationId: refreshSource
+      tags: [collections]
+      operationId: collectSource
       parameters:
         - $ref: "#/components/parameters/SourceId"
       responses:
-        "202":
-          description: Collection scheduled
+        "200":
+          description: Completed collection report for one source
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/JobAccepted"}
+              schema: {$ref: "#/components/schemas/CollectionReport"}
+              examples:
+                completed:
+                  externalValue: ./examples/collection-report.json
         "404": {$ref: "#/components/responses/NotFound"}
 
-  /api/import/seed:
+  /api/demo/seed:
     post:
-      tags: [import]
-      operationId: importSeed
+      tags: [demo]
+      operationId: importDemoSeed
       responses:
         "200":
           description: Idempotent offline import result
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/ImportResult"}
+              schema: {$ref: "#/components/schemas/DemoSeedImportReport"}
+              examples:
+                cleanDatabase:
+                  externalValue: ./examples/demo-seed-import-report.json
 
-  /api/collect/run:
+  /api/collections:
     post:
-      tags: [import]
-      operationId: runCollection
+      tags: [collections]
+      operationId: collectEnabledSources
       responses:
-        "202":
-          description: Collection scheduled for enabled sources
+        "200":
+          description: Completed collection report for enabled sources
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/JobAccepted"}
+              schema: {$ref: "#/components/schemas/CollectionReport"}
+              examples:
+                completed:
+                  externalValue: ./examples/collection-report.json
 
   /api/regulatory-cases:
     get:
@@ -274,25 +284,21 @@ paths:
               schema: {$ref: "#/components/schemas/RegulatoryCaseDetail"}
         "404": {$ref: "#/components/responses/NotFound"}
 
-  /api/regulatory-cases/{case_id}/publications:
-    post:
+  /api/regulatory-cases/{case_id}/publications/{publication_id}:
+    put:
       tags: [regulatory-cases]
       operationId: linkPublicationToCase
       parameters:
         - $ref: "#/components/parameters/CaseId"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: "#/components/schemas/PublicationLink"}
+        - $ref: "#/components/parameters/PublicationId"
       responses:
         "204": {description: Publication linked}
         "404": {$ref: "#/components/responses/NotFound"}
 
-  /api/regulatory-cases/{case_id}/events:
+  /api/regulatory-cases/{case_id}/lifecycle-events:
     post:
       tags: [regulatory-cases]
-      operationId: appendLifecycleEvent
+      operationId: createLifecycleEvent
       parameters:
         - $ref: "#/components/parameters/CaseId"
       requestBody:
@@ -401,7 +407,9 @@ components:
         name: {type: string, minLength: 1}
         type: {$ref: "#/components/schemas/SourceType"}
         url: {type: string, format: uri}
-        enabled: {type: boolean, default: true}
+        enabled:
+          type: boolean
+          description: Defaults to true when omitted
 
     SourcePatch:
       type: object
@@ -415,7 +423,16 @@ components:
     Source:
       type: object
       additionalProperties: false
-      required: [id, name, type, url, enabled]
+      required:
+        - id
+        - name
+        - type
+        - url
+        - enabled
+        - last_checked_at
+        - last_success_at
+        - last_error
+        - is_demo
       properties:
         id: {type: string}
         name: {type: string, minLength: 1}
@@ -425,7 +442,7 @@ components:
         last_checked_at: {type: [string, "null"], format: date-time}
         last_success_at: {type: [string, "null"], format: date-time}
         last_error: {type: [string, "null"]}
-        is_demo: {type: boolean, default: false}
+        is_demo: {type: boolean}
 
     Entity:
       type: object
@@ -459,7 +476,7 @@ components:
         H3: {type: boolean}
         H4: {type: boolean}
 
-    PublicationCard:
+    Publication:
       type: object
       additionalProperties: false
       required:
@@ -473,6 +490,7 @@ components:
         - content
         - content_hash
         - is_demo
+        - latest_analysis_id
       properties:
         id: {type: string}
         source_id: {type: string}
@@ -486,7 +504,7 @@ components:
         is_demo: {type: boolean}
         latest_analysis_id: {type: [string, "null"]}
 
-    AnalysisResult:
+    AnalysisVersion:
       type: object
       additionalProperties: false
       required:
@@ -522,7 +540,7 @@ components:
         category: {$ref: "#/components/schemas/Category"}
         proposed_priority: {$ref: "#/components/schemas/Priority"}
         criteria: {$ref: "#/components/schemas/Criteria"}
-        score: {type: integer, minimum: 0}
+        score: {type: integer, minimum: 0, maximum: 18}
         evidence: {type: array, items: {$ref: "#/components/schemas/Evidence"}}
         uncertainty: {type: number, minimum: 0, maximum: 1}
         needs_review: {type: boolean}
@@ -531,12 +549,12 @@ components:
     PublicationDetail:
       type: object
       additionalProperties: false
-      required: [publication]
+      required: [publication, latest_analysis, latest_decision]
       properties:
-        publication: {$ref: "#/components/schemas/PublicationCard"}
+        publication: {$ref: "#/components/schemas/Publication"}
         latest_analysis:
           oneOf:
-            - $ref: "#/components/schemas/AnalysisResult"
+            - $ref: "#/components/schemas/AnalysisVersion"
             - type: "null"
         latest_decision:
           oneOf:
@@ -555,11 +573,14 @@ components:
         limit: {type: integer, minimum: 1}
         offset: {type: integer, minimum: 0}
 
-    AnalyzeRequest:
+    AnalysisCreate:
       type: object
       additionalProperties: false
       properties:
-        analyzer: {type: string, enum: [replay, live_llm], default: replay}
+        analyzer:
+          type: string
+          enum: [replay, live_llm]
+          description: Defaults to replay when omitted
 
     DecisionStatus:
       type: string
@@ -587,8 +608,10 @@ components:
         - analysis_id
         - version
         - status
+        - final_summary
         - final_category
         - final_priority
+        - comment
         - author_id
         - created_at
       properties:
@@ -612,7 +635,7 @@ components:
         publication_id: {type: string}
         analyses:
           type: array
-          items: {$ref: "#/components/schemas/AnalysisResult"}
+          items: {$ref: "#/components/schemas/AnalysisVersion"}
         decisions:
           type: array
           items: {$ref: "#/components/schemas/SpecialistDecision"}
@@ -629,7 +652,7 @@ components:
         related_publication_ids:
           type: array
           items: {type: string}
-          default: []
+          description: Defaults to an empty list when omitted
 
     RegulatoryCase:
       type: object
@@ -660,13 +683,13 @@ components:
       additionalProperties: false
       required:
         - stage
-        - effective_at
+        - occurred_at
         - confirmation_url
         - confirmation_source_type
         - author_id
       properties:
         stage: {$ref: "#/components/schemas/LifecycleStage"}
-        effective_at: {type: string, format: date-time}
+        occurred_at: {type: string, format: date-time}
         confirmation_url: {type: string, format: uri}
         confirmation_source_type:
           type: string
@@ -681,16 +704,17 @@ components:
         - id
         - regulatory_case_id
         - stage
-        - effective_at
+        - occurred_at
         - confirmation_url
         - confirmation_source_type
+        - comment
         - author_id
         - created_at
       properties:
         id: {type: string}
         regulatory_case_id: {type: string}
         stage: {$ref: "#/components/schemas/LifecycleStage"}
-        effective_at: {type: string, format: date-time}
+        occurred_at: {type: string, format: date-time}
         confirmation_url: {type: string, format: uri}
         confirmation_source_type:
           type: string
@@ -702,21 +726,14 @@ components:
     RegulatoryCaseDetail:
       type: object
       additionalProperties: false
-      required: [case, timeline]
+      required: [regulatory_case, timeline]
       properties:
-        case: {$ref: "#/components/schemas/RegulatoryCase"}
+        regulatory_case: {$ref: "#/components/schemas/RegulatoryCase"}
         timeline:
           type: array
           items: {$ref: "#/components/schemas/LifecycleEvent"}
 
-    PublicationLink:
-      type: object
-      additionalProperties: false
-      required: [publication_id]
-      properties:
-        publication_id: {type: string}
-
-    ImportResult:
+    DemoSeedImportReport:
       type: object
       additionalProperties: false
       required: [sources, publications, analyses, duplicates]
@@ -726,10 +743,48 @@ components:
         analyses: {type: integer, minimum: 0}
         duplicates: {type: integer, minimum: 0}
 
-    JobAccepted:
+    SourceCollectionResult:
       type: object
       additionalProperties: false
-      required: [job_id, status]
+      required:
+        - source_id
+        - status
+        - collected
+        - created
+        - exact_duplicates
+        - semantic_candidates
+        - error
       properties:
-        job_id: {type: string}
-        status: {type: string, const: accepted}
+        source_id: {type: string}
+        status: {type: string, enum: [success, partial, failed]}
+        collected: {type: integer, minimum: 0}
+        created: {type: integer, minimum: 0}
+        exact_duplicates: {type: integer, minimum: 0}
+        semantic_candidates: {type: integer, minimum: 0}
+        error: {type: [string, "null"]}
+
+    CollectionReport:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - started_at
+        - finished_at
+        - sources
+        - collected
+        - created
+        - exact_duplicates
+        - semantic_candidates
+      properties:
+        status:
+          type: string
+          enum: [completed, partial_failure, failed]
+        started_at: {type: string, format: date-time}
+        finished_at: {type: string, format: date-time}
+        sources:
+          type: array
+          items: {$ref: "#/components/schemas/SourceCollectionResult"}
+        collected: {type: integer, minimum: 0}
+        created: {type: integer, minimum: 0}
+        exact_duplicates: {type: integer, minimum: 0}
+        semantic_candidates: {type: integer, minimum: 0}

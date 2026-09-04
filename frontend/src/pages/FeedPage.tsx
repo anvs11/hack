@@ -265,7 +265,7 @@ export function FeedPage() {
             <PageState
               kind="empty"
               title="Публикаций нет"
-              message="В mock-ленте пока нет материалов."
+              message="В ленте пока нет материалов."
             />
           )}
 

@@ -4,15 +4,17 @@ MVP собирает публикации из СМИ, регуляторных 
 формирует воспроизводимый AI-анализ и передаёт карточку специалисту для
 финального решения. НПА ведутся отдельными карточками с append-only lifecycle.
 
-## Нулевой контракт
+## Зафиксированный контракт v0.2
 
-До параллельной разработки зафиксированы:
+В текущем срезе зафиксированы:
 
 1. структура репозитория;
 2. модели API в `contracts/openapi.yaml`;
 3. эталонные JSON в `contracts/examples/`;
 4. offline seed: 5 источников, 10 публикаций и 10 replay-анализов;
-5. канонические команды запуска backend и frontend.
+5. синхронный сбор с отчётом, exact dedup и optional semantic candidates;
+6. replay-анализ и ленивые Hugging Face adapters без автоматического скачивания;
+7. канонические команды запуска backend и frontend.
 
 Правила изменения контракта описаны в `rules.md`, инструкции агентам — в
 `AGENTS.md`, продуктовый контекст — в `CONTEXT_PACK.md`. Эти файлы нужно читать
@@ -37,31 +39,47 @@ MVP собирает публикации из СМИ, регуляторных 
 │           ├── publications/
 │           ├── analysis/
 │           ├── prioritization/
-│           ├── evaluation/
-│           ├── reviews/
-│           ├── regulatory_cases/
-│           └── digests/
+│           ├── decisions/           # следующий срез
+│           ├── regulatory_cases/    # следующий срез
+│           └── digests/             # следующий срез
 ├── frontend/
 ├── data/
 │   ├── seed/
 │   └── eval/
 ├── scripts/
-│   └── seed_demo.py
-├── tests/
-│   └── e2e/
+│   ├── seed_demo.py
+│   └── evaluate_analysis.py
 └── docs/
-    └── DEMO_SCENARIO.md
+    ├── BACKEND_TODO.md
+    ├── FRONTEND_API_CHANGES.md
+    ├── FULL_ARCHITECTURE.md
+    └── SOURCE_INVENTORY.md
 ```
 
-Пока backend и frontend не созданы, дерево выше является обязательным целевым
-каркасом для задач A1/B1. Новые верхнеуровневые каталоги добавляются только через
-процедуру изменения protected context из `rules.md`.
+Каталоги с пометкой «следующий срез» являются целевыми, остальные уже реализованы.
+Новые верхнеуровневые каталоги добавляются только через процедуру изменения
+protected context из `rules.md`.
+
+## HTTP API v0.2
+
+Реализованы:
+
+- `GET /api/health`;
+- `GET /api/sources`, `POST /api/sources`, `PATCH /api/sources/{source_id}`;
+- `POST /api/sources/{source_id}/collections`, `POST /api/collections`;
+- `POST /api/demo/seed`;
+- `GET /api/publications`, `GET /api/publications/{publication_id}`;
+- `POST /api/publications/{publication_id}/analyses`.
+
+Операции decisions, history и regulatory cases уже зафиксированы в OpenAPI, но ещё
+не подключены к FastAPI. Канонические имена и JSON-форматы описаны только в
+`contracts/openapi.yaml`.
 
 ## Канонические команды
 
 ### Локальный seed
 
-Работает уже на нулевом этапе и не требует сторонних зависимостей:
+Не требует сторонних зависимостей:
 
 ```bash
 python3 scripts/seed_demo.py
@@ -72,33 +90,52 @@ python3 scripts/seed_demo.py
 
 ### Backend
 
-После задачи A1 backend обязан запускаться из корня одной командой:
+Установка базовых зависимостей из корня:
 
 ```bash
-python3 -m uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000
+python3 -m venv .venv
+.venv/bin/python -m pip install -r backend/requirements-dev.txt
+```
+
+Запуск:
+
+```bash
+.venv/bin/python -m uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Health-check: `GET http://127.0.0.1:8000/api/health`.
 
 ### Frontend
 
-После задачи B1 frontend обязан запускаться из корня одной командой:
+Установка и запуск:
 
 ```bash
+npm --prefix frontend ci
 npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173
 ```
 
 UI: `http://127.0.0.1:5173`.
 
-## Проверки нулевого этапа
+## Полная локальная проверка
 
 ```bash
 python3 -m json.tool data/seed/sources.json >/dev/null
 python3 -m json.tool data/seed/publications.json >/dev/null
 python3 -m json.tool data/seed/replay-analyses.json >/dev/null
 ruby -e "require 'yaml'; YAML.load_file('contracts/openapi.yaml')"
-python3 scripts/seed_demo.py --db /tmp/hack-demo.sqlite3
+.venv/bin/python -m pytest backend/tests -q
+.venv/bin/python scripts/evaluate_analysis.py
+npm --prefix frontend run generate:api
+npm --prefix frontend run typecheck
+npm --prefix frontend run lint
+npm --prefix frontend run test -- --run
+npm --prefix frontend run build
 ```
 
-После появления зависимостей backend OpenAPI дополнительно проверяется профильным
-валидатором в CI. SQLite из `/tmp` или `.local/` не добавляется в Git.
+Для отдельной проверки seed используйте временный файл, например
+`python3 scripts/seed_demo.py --db /tmp/hack-demo.sqlite3`. SQLite из `/tmp` или
+`.local/` не добавляется в Git.
+
+Optional LLM-зависимости устанавливаются отдельно из
+`backend/requirements-llm.txt`. Скачивание моделей выключено по умолчанию; параметры
+окружения описаны в `docs/FULL_ARCHITECTURE.md`.
