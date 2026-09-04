@@ -4,6 +4,8 @@ import { server } from '../../test/setup'
 import { api } from './client'
 import { publicationHistory, regulatoryCases } from '../../mocks/fixtures'
 import type {
+  LifecycleEvent,
+  LifecycleEventCreate,
   PublicationList,
   SpecialistDecision,
   SpecialistDecisionCreate,
@@ -108,5 +110,36 @@ describe('publication API client', () => {
     expect(await api.listRegulatoryCases()).toEqual(regulatoryCases)
     await expect(api.linkPublicationToCase('case-001', 'pub-001')).resolves.toBeUndefined()
     expect(linked).toBe(true)
+  })
+
+  it('creates a lifecycle event through the encoded contract path and JSON body', async () => {
+    let received: LifecycleEventCreate | null = null
+    let requestedPath = ''
+    const payload = {
+      stage: 'introduced',
+      occurred_at: '2026-09-04T12:00:00.000Z',
+      confirmation_url: 'https://regulator.example/events/42',
+      confirmation_source_type: 'official_publication',
+      comment: 'Официально внесён.',
+      author_id: 'user-gr-001',
+    } satisfies LifecycleEventCreate
+    server.use(
+      http.post('*/api/regulatory-cases/:caseId/lifecycle-events', async ({ request }) => {
+        requestedPath = new URL(request.url).pathname
+        received = await request.json() as LifecycleEventCreate
+        return HttpResponse.json({
+          ...payload,
+          id: 'event-client-test',
+          regulatory_case_id: 'case/encoded',
+          created_at: '2026-09-04T12:01:00Z',
+        } satisfies LifecycleEvent, { status: 201 })
+      }),
+    )
+
+    const lifecycleEvent = await api.createLifecycleEvent('case/encoded', payload)
+
+    expect(requestedPath).toBe('/api/regulatory-cases/case%2Fencoded/lifecycle-events')
+    expect(received).toEqual(payload)
+    expect(lifecycleEvent.stage).toBe('introduced')
   })
 })

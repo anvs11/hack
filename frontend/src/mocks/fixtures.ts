@@ -310,7 +310,7 @@ export const regulatoryCase = {
   registration_number: 'DEMO-2026-001',
   current_stage: 'draft',
   responsible_user_id: 'user-gr-001',
-  related_publication_ids: [],
+  related_publication_ids: ['pub-001', 'pub-005'],
   created_at: '2026-09-01T08:10:00Z',
   updated_at: '2026-09-01T08:10:00Z',
 } satisfies RegulatoryCase

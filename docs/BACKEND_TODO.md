@@ -27,8 +27,8 @@
 
 - backend A1–A8.1 реализован в рабочей ветке `feat/content-pipeline`;
 - контракт содержит 17 HTTP-операций;
-- frontend сейчас вызывает только четыре read-операции:
-  `listPublications`, `getPublication`, `getRegulatoryCase`, `listSources`;
+- frontend использует read API публикаций, источников, истории и кейсов, а также
+  контрактные write-операции для решений, связей publication-case и lifecycle events;
 - offline seed содержит 5 источников, 10 публикаций и 10 replay-анализов;
 - `scripts/seed_demo.py` уже создаёт SQLite-таблицы `sources`, `publications` и
   `analysis_versions` и повторно импортирует данные без дублей;
@@ -266,7 +266,7 @@ Backend должен обеспечивать:
 | --- | --- | --- | --- |
 | Три категории источников | A8 collectors + inventory | Частично: типы есть, HTML-type нет | Показывает типы |
 | Саммари 3–5 предложений | A6 Live/ReplayAnalyzer | `summary` есть, длина не ограничена | Показывает latest summary |
-| Сущности | A6 structured output | `entities` есть | В UI пока не показаны |
+| Сущности | A6 structured output | `entities` есть | Показаны в карточке анализа |
 | Категоризация | A6 | Есть | Фильтр и badge есть |
 | Приоритизация | A7 deterministic scorer | Есть proposed/final split | Фильтр и badge proposed есть |
 | Поиск | A4 | Есть, но mentions tags без поля tags | Работает по mock |
@@ -278,8 +278,8 @@ Backend должен обеспечивать:
 | Ручное добавление публикации | C1 | Нет | Нет |
 | Редактирование публикации/тегов | C1 + W1 | Частично только final decision | Нет |
 | Скрытие публикации | C1 | Нет | Нет |
-| Решение специалиста | W1 | Есть | Формы пока нет |
-| История НПА | W2 | Есть | Read-only timeline есть |
+| Решение специалиста | W1 | Есть | Форма, latest decision и история есть |
+| История НПА | W2 | Есть | Timeline, связанные публикации и создание официального события |
 
 ## 2. Архитектурное решение
 
@@ -775,6 +775,8 @@ DoD: timeline append-only; current stage и событие обновляютс�
 идемпотентный link; B4 добавил создание кейса, `lifecycle_events`,
 проверяемую матрицу переходов, DB-backed timeline и атомарное обновление
 текущей стадии. Принимаются только `regulator` и `official_publication`.
+Frontend B5 показывает текущую стадию и append-only timeline, обогащает связанные
+публикации с fallback по ID и создаёт официальные lifecycle events через этот API.
 
 ### W3 — digest
 
