@@ -1,0 +1,19 @@
+{
+  "dataset_id": "seed-replay-self-consistency-v1",
+  "purpose": "plumbing_smoke",
+  "frozen_at": "2026-09-04T00:00:00Z",
+  "independent_labels": false,
+  "quality_claim_allowed": false,
+  "items": [
+    {"publication_id": "pub-001", "expected_category": "regulation", "expected_priority": "high", "label_source": "replay_fixture", "annotator_id": null, "notes": null},
+    {"publication_id": "pub-002", "expected_category": "regulation", "expected_priority": "high", "label_source": "replay_fixture", "annotator_id": null, "notes": null},
+    {"publication_id": "pub-003", "expected_category": "trend", "expected_priority": "low", "label_source": "replay_fixture", "annotator_id": null, "notes": null},
+    {"publication_id": "pub-004", "expected_category": "trend", "expected_priority": "medium", "label_source": "replay_fixture", "annotator_id": null, "notes": null},
+    {"publication_id": "pub-005", "expected_category": "regulation", "expected_priority": "medium", "label_source": "replay_fixture", "annotator_id": null, "notes": null},
+    {"publication_id": "pub-006", "expected_category": "regulation", "expected_priority": "medium", "label_source": "replay_fixture", "annotator_id": null, "notes": null},
+    {"publication_id": "pub-007", "expected_category": "regulation", "expected_priority": "high", "label_source": "replay_fixture", "annotator_id": null, "notes": null},
+    {"publication_id": "pub-008", "expected_category": "reputation", "expected_priority": "medium", "label_source": "replay_fixture", "annotator_id": null, "notes": null},
+    {"publication_id": "pub-009", "expected_category": "competitor", "expected_priority": "medium", "label_source": "replay_fixture", "annotator_id": null, "notes": null},
+    {"publication_id": "pub-010", "expected_category": "trend", "expected_priority": "low", "label_source": "replay_fixture", "annotator_id": null, "notes": null}
+  ]
+}

@@ -1,7 +1,7 @@
 import type { components, operations } from './schema'
 
-export type PublicationCard = components['schemas']['PublicationCard']
-export type AnalysisResult = components['schemas']['AnalysisResult']
+export type Publication = components['schemas']['Publication']
+export type AnalysisVersion = components['schemas']['AnalysisVersion']
 export type PublicationDetail = components['schemas']['PublicationDetail']
 export type PublicationList = components['schemas']['PublicationList']
 export type RegulatoryCase = components['schemas']['RegulatoryCase']

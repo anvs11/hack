@@ -1,0 +1,154 @@
+{
+  "inputs": {
+    "labels": "data/eval/smoke-labels-v1.json",
+    "labels_sha256": "b4cf2b02191339b96146237d5bd89ba6af3889d2579cac2dc87fbfa1eb539f46",
+    "predictions": "data/seed/replay-analyses.json",
+    "predictions_sha256": "60818137a6b82ef85a6d8ca21a1cd5e595e268ab205366206f4875c0335ef164",
+    "publications": "data/seed/publications.json",
+    "publications_sha256": "55c297df0401fc0dcb2759b9aebd56fa501adef566a455bfcbf13f0eb1e88dd6"
+  },
+  "reproduction_command": ".venv/bin/python scripts/evaluate_analysis.py --labels data/eval/smoke-labels-v1.json --predictions data/seed/replay-analyses.json --publications data/seed/publications.json --output-dir data/eval/results/seed-replay-smoke-v1",
+  "dataset": {
+    "dataset_id": "seed-replay-self-consistency-v1",
+    "purpose": "plumbing_smoke",
+    "frozen_at": "2026-09-04T00:00:00Z",
+    "independent_labels": false,
+    "quality_claim_allowed": false,
+    "label_count": 10
+  },
+  "format_validation": {
+    "predictions_received": 10,
+    "valid_json_count": 10,
+    "valid_json_rate": 1.0,
+    "valid_schema_count": 10,
+    "valid_schema_rate": 1.0
+  },
+  "coverage": {
+    "matched_prediction_count": 10,
+    "missing_or_invalid_prediction_count": 0,
+    "unexpected_prediction_ids": []
+  },
+  "priority": {
+    "evaluated_count": 10,
+    "accuracy": 1.0,
+    "macro_f1": 1.0,
+    "evaluated_classes": [
+      "high",
+      "medium",
+      "low"
+    ],
+    "f1_by_class": {
+      "high": 1.0,
+      "medium": 1.0,
+      "low": 1.0
+    },
+    "confusion_matrix": {
+      "critical": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "unknown": 0
+      },
+      "high": {
+        "critical": 0,
+        "high": 3,
+        "medium": 0,
+        "low": 0,
+        "unknown": 0
+      },
+      "medium": {
+        "critical": 0,
+        "high": 0,
+        "medium": 5,
+        "low": 0,
+        "unknown": 0
+      },
+      "low": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 2,
+        "unknown": 0
+      },
+      "unknown": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "unknown": 0
+      }
+    }
+  },
+  "category": {
+    "evaluated_count": 10,
+    "accuracy": 1.0,
+    "macro_f1": 1.0,
+    "evaluated_classes": [
+      "regulation",
+      "reputation",
+      "competitor",
+      "trend"
+    ],
+    "f1_by_class": {
+      "regulation": 1.0,
+      "reputation": 1.0,
+      "competitor": 1.0,
+      "trend": 1.0
+    },
+    "confusion_matrix": {
+      "regulation": {
+        "regulation": 5,
+        "reputation": 0,
+        "competitor": 0,
+        "trend": 0,
+        "unknown": 0
+      },
+      "reputation": {
+        "regulation": 0,
+        "reputation": 1,
+        "competitor": 0,
+        "trend": 0,
+        "unknown": 0
+      },
+      "competitor": {
+        "regulation": 0,
+        "reputation": 0,
+        "competitor": 1,
+        "trend": 0,
+        "unknown": 0
+      },
+      "trend": {
+        "regulation": 0,
+        "reputation": 0,
+        "competitor": 0,
+        "trend": 3,
+        "unknown": 0
+      },
+      "unknown": {
+        "regulation": 0,
+        "reputation": 0,
+        "competitor": 0,
+        "trend": 0,
+        "unknown": 0
+      }
+    }
+  },
+  "critical_guardrail": {
+    "critical_label_count": 0,
+    "critical_to_low_count": 0
+  },
+  "evidence": {
+    "evaluated_prediction_count": 10,
+    "evidence_quote_count": 10,
+    "grounded_quote_count": 10,
+    "grounded_quote_rate": 1.0,
+    "all_quotes_grounded_prediction_count": 10,
+    "all_quotes_grounded_prediction_rate": 1.0,
+    "empty_evidence_prediction_count": 0
+  },
+  "summary_factuality": {
+    "status": "not_measured",
+    "reason": "Substring grounding of evidence quotes does not prove that every summary claim is factually supported. Independent human annotation is required."
+  }
+}
