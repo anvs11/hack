@@ -52,7 +52,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/publications/{publication_id}/analyze": {
+    "/api/publications/{publication_id}/analyses": {
         parameters: {
             query?: never;
             header?: never;
@@ -61,14 +61,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["analyzePublication"];
+        post: operations["createPublicationAnalysis"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/publications/{publication_id}/reviews": {
+    "/api/publications/{publication_id}/decisions": {
         parameters: {
             query?: never;
             header?: never;
@@ -132,7 +132,7 @@ export interface paths {
         patch: operations["updateSource"];
         trace?: never;
     };
-    "/api/sources/{source_id}/refresh": {
+    "/api/sources/{source_id}/collections": {
         parameters: {
             query?: never;
             header?: never;
@@ -141,14 +141,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["refreshSource"];
+        post: operations["collectSource"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/import/seed": {
+    "/api/demo/seed": {
         parameters: {
             query?: never;
             header?: never;
@@ -157,14 +157,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["importSeed"];
+        post: operations["importDemoSeed"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/collect/run": {
+    "/api/collections": {
         parameters: {
             query?: never;
             header?: never;
@@ -173,7 +173,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["runCollection"];
+        post: operations["collectEnabledSources"];
         delete?: never;
         options?: never;
         head?: never;
@@ -212,7 +212,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/regulatory-cases/{case_id}/publications": {
+    "/api/regulatory-cases/{case_id}/publications/{publication_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -220,15 +220,15 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
-        post: operations["linkPublicationToCase"];
+        put: operations["linkPublicationToCase"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/regulatory-cases/{case_id}/events": {
+    "/api/regulatory-cases/{case_id}/lifecycle-events": {
         parameters: {
             query?: never;
             header?: never;
@@ -237,7 +237,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["appendLifecycleEvent"];
+        post: operations["createLifecycleEvent"];
         delete?: never;
         options?: never;
         head?: never;
@@ -272,8 +272,8 @@ export interface components {
             type: components["schemas"]["SourceType"];
             /** Format: uri */
             url: string;
-            /** @default true */
-            enabled: boolean;
+            /** @description Defaults to true when omitted */
+            enabled?: boolean;
         };
         SourcePatch: {
             name?: string;
@@ -289,11 +289,10 @@ export interface components {
             url: string;
             enabled: boolean;
             /** Format: date-time */
-            last_checked_at?: string | null;
+            last_checked_at: string | null;
             /** Format: date-time */
-            last_success_at?: string | null;
-            last_error?: string | null;
-            /** @default false */
+            last_success_at: string | null;
+            last_error: string | null;
             is_demo: boolean;
         };
         Entity: {
@@ -316,7 +315,7 @@ export interface components {
             H3: boolean;
             H4: boolean;
         };
-        PublicationCard: {
+        Publication: {
             id: string;
             source_id: string;
             external_id: string;
@@ -330,9 +329,9 @@ export interface components {
             content: string;
             content_hash: string;
             is_demo: boolean;
-            latest_analysis_id?: string | null;
+            latest_analysis_id: string | null;
         };
-        AnalysisResult: {
+        AnalysisVersion: {
             id: string;
             publication_id: string;
             version: number;
@@ -355,9 +354,9 @@ export interface components {
             created_at: string;
         };
         PublicationDetail: {
-            publication: components["schemas"]["PublicationCard"];
-            latest_analysis?: components["schemas"]["AnalysisResult"] | null;
-            latest_decision?: components["schemas"]["SpecialistDecision"] | null;
+            publication: components["schemas"]["Publication"];
+            latest_analysis: components["schemas"]["AnalysisVersion"] | null;
+            latest_decision: components["schemas"]["SpecialistDecision"] | null;
         };
         PublicationList: {
             items: components["schemas"]["PublicationDetail"][];
@@ -365,12 +364,12 @@ export interface components {
             limit: number;
             offset: number;
         };
-        AnalyzeRequest: {
+        AnalysisCreate: {
             /**
-             * @default replay
+             * @description Defaults to replay when omitted
              * @enum {string}
              */
-            analyzer: "replay" | "live_llm";
+            analyzer?: "replay" | "live_llm";
         };
         /** @enum {string} */
         DecisionStatus: "confirmed" | "corrected" | "rejected";
@@ -389,17 +388,17 @@ export interface components {
             analysis_id: string;
             version: number;
             status: components["schemas"]["DecisionStatus"];
-            final_summary?: string | null;
+            final_summary: string | null;
             final_category: components["schemas"]["Category"];
             final_priority: components["schemas"]["Priority"];
-            comment?: string | null;
+            comment: string | null;
             author_id: string;
             /** Format: date-time */
             created_at: string;
         };
         PublicationHistory: {
             publication_id: string;
-            analyses: components["schemas"]["AnalysisResult"][];
+            analyses: components["schemas"]["AnalysisVersion"][];
             decisions: components["schemas"]["SpecialistDecision"][];
         };
         RegulatoryCaseCreate: {
@@ -407,8 +406,8 @@ export interface components {
             registration_number: string;
             current_stage: components["schemas"]["LifecycleStage"];
             responsible_user_id: string;
-            /** @default [] */
-            related_publication_ids: string[];
+            /** @description Defaults to an empty list when omitted */
+            related_publication_ids?: string[];
         };
         RegulatoryCase: {
             id: string;
@@ -425,7 +424,7 @@ export interface components {
         LifecycleEventCreate: {
             stage: components["schemas"]["LifecycleStage"];
             /** Format: date-time */
-            effective_at: string;
+            occurred_at: string;
             /** Format: uri */
             confirmation_url: string;
             /** @enum {string} */
@@ -438,33 +437,48 @@ export interface components {
             regulatory_case_id: string;
             stage: components["schemas"]["LifecycleStage"];
             /** Format: date-time */
-            effective_at: string;
+            occurred_at: string;
             /** Format: uri */
             confirmation_url: string;
             /** @enum {string} */
             confirmation_source_type: "regulator" | "official_publication";
-            comment?: string | null;
+            comment: string | null;
             author_id: string;
             /** Format: date-time */
             created_at: string;
         };
         RegulatoryCaseDetail: {
-            case: components["schemas"]["RegulatoryCase"];
+            regulatory_case: components["schemas"]["RegulatoryCase"];
             timeline: components["schemas"]["LifecycleEvent"][];
         };
-        PublicationLink: {
-            publication_id: string;
-        };
-        ImportResult: {
+        DemoSeedImportReport: {
             sources: number;
             publications: number;
             analyses: number;
             duplicates: number;
         };
-        JobAccepted: {
-            job_id: string;
-            /** @constant */
-            status: "accepted";
+        SourceCollectionResult: {
+            source_id: string;
+            /** @enum {string} */
+            status: "success" | "partial" | "failed";
+            collected: number;
+            created: number;
+            exact_duplicates: number;
+            semantic_candidates: number;
+            error: string | null;
+        };
+        CollectionReport: {
+            /** @enum {string} */
+            status: "completed" | "partial_failure" | "failed";
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            finished_at: string;
+            sources: components["schemas"]["SourceCollectionResult"][];
+            collected: number;
+            created: number;
+            exact_duplicates: number;
+            semantic_candidates: number;
         };
     };
     responses: {
@@ -577,7 +591,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    analyzePublication: {
+    createPublicationAnalysis: {
         parameters: {
             query?: never;
             header?: never;
@@ -588,7 +602,7 @@ export interface operations {
         };
         requestBody?: {
             content: {
-                "application/json": components["schemas"]["AnalyzeRequest"];
+                "application/json": components["schemas"]["AnalysisCreate"];
             };
         };
         responses: {
@@ -598,7 +612,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AnalysisResult"];
+                    "application/json": components["schemas"]["AnalysisVersion"];
                 };
             };
             404: components["responses"]["NotFound"];
@@ -728,7 +742,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    refreshSource: {
+    collectSource: {
         parameters: {
             query?: never;
             header?: never;
@@ -739,19 +753,19 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Collection scheduled */
-            202: {
+            /** @description Completed collection report for one source */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["JobAccepted"];
+                    "application/json": components["schemas"]["CollectionReport"];
                 };
             };
             404: components["responses"]["NotFound"];
         };
     };
-    importSeed: {
+    importDemoSeed: {
         parameters: {
             query?: never;
             header?: never;
@@ -766,12 +780,12 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ImportResult"];
+                    "application/json": components["schemas"]["DemoSeedImportReport"];
                 };
             };
         };
     };
-    runCollection: {
+    collectEnabledSources: {
         parameters: {
             query?: never;
             header?: never;
@@ -780,13 +794,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Collection scheduled for enabled sources */
-            202: {
+            /** @description Completed collection report for enabled sources */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["JobAccepted"];
+                    "application/json": components["schemas"]["CollectionReport"];
                 };
             };
         };
@@ -865,14 +879,11 @@ export interface operations {
             header?: never;
             path: {
                 case_id: components["parameters"]["CaseId"];
+                publication_id: components["parameters"]["PublicationId"];
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PublicationLink"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Publication linked */
             204: {
@@ -884,7 +895,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    appendLifecycleEvent: {
+    createLifecycleEvent: {
         parameters: {
             query?: never;
             header?: never;

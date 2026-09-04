@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Offline RSS fixture</title>
+    <item>
+      <guid>rss-001</guid>
+      <title>Регулятор опубликовал новый документ</title>
+      <link>https://example.org/rss/rss-001</link>
+      <pubDate>Fri, 04 Sep 2026 08:00:00 GMT</pubDate>
+      <description><![CDATA[<p>Документ опубликован для общественного обсуждения.</p>]]></description>
+    </item>
+  </channel>
+</rss>

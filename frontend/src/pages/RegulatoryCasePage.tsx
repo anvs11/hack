@@ -32,7 +32,7 @@ export function RegulatoryCasePage() {
     return <PageState kind="error" title="Кейс не загрузился" message={state.error.message} />
   }
 
-  const { case: regulatoryCase, timeline } = state.data
+  const { regulatory_case: regulatoryCase, timeline } = state.data
 
   return (
     <section>
@@ -57,7 +57,7 @@ export function RegulatoryCasePage() {
                 <div className="timeline-marker" aria-hidden="true" />
                 <div className="timeline-card">
                   <span className="timeline-index" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
-                  <div className="card-meta"><span>{formatDate(event.effective_at)}</span><span>{event.confirmation_source_type}</span></div>
+                  <div className="card-meta"><span>{formatDate(event.occurred_at)}</span><span>{event.confirmation_source_type}</span></div>
                   <h3>{stageLabels[event.stage]}</h3>
                   {event.comment && <p>{event.comment}</p>}
                   <a href={event.confirmation_url} target="_blank" rel="noreferrer">Подтверждение в источнике ↗</a>

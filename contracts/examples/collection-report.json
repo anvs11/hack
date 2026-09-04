@@ -1,0 +1,20 @@
+{
+  "status": "completed",
+  "started_at": "2026-09-04T10:00:00Z",
+  "finished_at": "2026-09-04T10:00:01Z",
+  "sources": [
+    {
+      "source_id": "source-file-example",
+      "status": "success",
+      "collected": 4,
+      "created": 1,
+      "exact_duplicates": 3,
+      "semantic_candidates": 0,
+      "error": null
+    }
+  ],
+  "collected": 4,
+  "created": 1,
+  "exact_duplicates": 3,
+  "semantic_candidates": 0
+}

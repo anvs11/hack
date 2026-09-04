@@ -1,7 +1,7 @@
 import type {
-  AnalysisResult,
+  AnalysisVersion,
   LifecycleEvent,
-  PublicationCard,
+  Publication,
   PublicationDetail,
   PublicationList,
   RegulatoryCase,
@@ -23,7 +23,7 @@ const defaultCriteria = {
 } as const
 
 const publication = (
-  value: Omit<PublicationCard, 'collected_at' | 'content_hash' | 'is_demo'>,
+  value: Omit<Publication, 'collected_at' | 'content_hash' | 'is_demo'>,
   hashDigit: string,
 ) =>
   ({
@@ -31,11 +31,11 @@ const publication = (
     collected_at: value.published_at,
     content_hash: `sha256:${hashDigit.repeat(64)}`,
     is_demo: true,
-  }) satisfies PublicationCard
+  }) satisfies Publication
 
 const analysis = (
   value: Omit<
-    AnalysisResult,
+    AnalysisVersion,
     | 'version'
     | 'analyzer'
     | 'model'
@@ -47,7 +47,7 @@ const analysis = (
     | 'evidence'
     | 'created_at'
   >,
-  card: PublicationCard,
+  card: Publication,
 ) =>
   ({
     ...value,
@@ -61,7 +61,7 @@ const analysis = (
     criteria: defaultCriteria,
     evidence: [],
     created_at: card.collected_at,
-  }) satisfies AnalysisResult
+  }) satisfies AnalysisVersion
 
 const publication001 = publication(
   {
@@ -253,7 +253,7 @@ const lifecycleEvent = {
   id: 'event-001',
   regulatory_case_id: 'case-001',
   stage: 'draft',
-  effective_at: '2026-09-01T07:30:00Z',
+  occurred_at: '2026-09-01T07:30:00Z',
   confirmation_url: 'https://example.org/regulation/demo-reg-001',
   confirmation_source_type: 'regulator',
   comment: 'Проект опубликован для общественного обсуждения.',
@@ -262,7 +262,7 @@ const lifecycleEvent = {
 } satisfies LifecycleEvent
 
 export const regulatoryCaseDetail = {
-  case: regulatoryCase,
+  regulatory_case: regulatoryCase,
   timeline: [lifecycleEvent],
 } satisfies RegulatoryCaseDetail
 
@@ -273,8 +273,10 @@ export const sources = [
     type: 'regulator',
     url: 'https://regulation.gov.ru/',
     enabled: true,
+    last_checked_at: '2026-09-01T07:35:00Z',
     is_demo: true,
     last_success_at: '2026-09-01T07:35:00Z',
+    last_error: null,
   },
   {
     id: 'source-duma',
@@ -282,8 +284,10 @@ export const sources = [
     type: 'regulator',
     url: 'https://sozd.duma.gov.ru/',
     enabled: true,
+    last_checked_at: '2026-09-01T08:05:00Z',
     is_demo: true,
     last_success_at: '2026-09-01T08:05:00Z',
+    last_error: null,
   },
   {
     id: 'source-media-rss-1',
@@ -291,8 +295,10 @@ export const sources = [
     type: 'rss',
     url: 'https://example.org/feeds/business.xml',
     enabled: true,
+    last_checked_at: '2026-09-01T11:05:00Z',
     is_demo: true,
     last_success_at: '2026-09-01T11:05:00Z',
+    last_error: null,
   },
   {
     id: 'source-media-rss-2',
@@ -300,8 +306,10 @@ export const sources = [
     type: 'rss',
     url: 'https://example.org/feeds/technology.xml',
     enabled: true,
+    last_checked_at: '2026-09-01T11:35:00Z',
     is_demo: true,
     last_success_at: '2026-09-01T11:35:00Z',
+    last_error: null,
   },
   {
     id: 'source-telegram-archive',
@@ -309,7 +317,9 @@ export const sources = [
     type: 'telegram_archive',
     url: 'https://example.org/telegram/archive',
     enabled: true,
+    last_checked_at: '2026-09-01T09:20:00Z',
     is_demo: true,
     last_success_at: '2026-09-01T09:20:00Z',
+    last_error: null,
   },
 ] satisfies Source[]

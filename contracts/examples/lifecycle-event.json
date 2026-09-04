@@ -2,7 +2,7 @@
   "id": "event-001",
   "regulatory_case_id": "case-001",
   "stage": "draft",
-  "effective_at": "2026-09-01T07:30:00Z",
+  "occurred_at": "2026-09-01T07:30:00Z",
   "confirmation_url": "https://example.org/regulation/demo-reg-001",
   "confirmation_source_type": "regulator",
   "comment": "Проект опубликован для общественного обсуждения.",

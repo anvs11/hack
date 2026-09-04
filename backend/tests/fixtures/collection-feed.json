@@ -1,0 +1,34 @@
+[
+  {
+    "external_id": "offline-001",
+    "title": "Новый материал из offline-файла",
+    "original_url": "https://example.org/offline/new-item#fragment",
+    "published_at": "2026-09-04T08:00:00Z",
+    "content": "Новый проверочный материал про облачные сервисы и корпоративный рынок.",
+    "is_demo": true
+  },
+  {
+    "external_id": "offline-001",
+    "title": "Повтор external ID",
+    "original_url": "https://example.org/offline/duplicate-external-id",
+    "published_at": "2026-09-04T08:01:00Z",
+    "content": "Этот текст отличается, но external ID уже встречался в том же источнике.",
+    "is_demo": true
+  },
+  {
+    "external_id": "offline-duplicate-url",
+    "title": "Повтор canonical URL",
+    "original_url": "https://example.org/regulation/demo-reg-001#copy",
+    "published_at": "2026-09-04T08:02:00Z",
+    "content": "Этот текст отличается, но canonical URL уже существует в seed.",
+    "is_demo": true
+  },
+  {
+    "external_id": "offline-duplicate-hash",
+    "title": "Повтор нормализованного текста",
+    "original_url": "https://example.org/offline/duplicate-content",
+    "published_at": "2026-09-04T08:03:00Z",
+    "content": "Демонстрационный материал: законопроект предлагает маркировать автоматически созданный контент и назначает переходный период.",
+    "is_demo": true
+  }
+]

@@ -23,13 +23,13 @@
 `CONTEXT_PACK.md`, если изменились продуктовые границы или архитектура. В отчёте перечислить,
 что синхронизировано. Если контекст менять не потребовалось — написать это явно.
 
-`README.md`, `rules.md` и `contracts/` меняются только отдельным согласованным
-коммитом/PR. Не смешивать изменение контракта с реализацией фичи. До согласования
-обоих инженерных контуров действующий контракт остаётся источником истины.
+`README.md`, `rules.md` и `contracts/` меняются только по явному поручению владельца
+проекта и одним синхронизированным набором изменений. До такого поручения действующий
+контракт остаётся источником истины.
 
 ## Архитектурные владельцы
 
-### Инженер 1 — Content Intelligence Pipeline
+### Инженер 1 — весь backend
 
 Владеет:
 
@@ -39,15 +39,15 @@
 - `backend/app/modules/analysis/`;
 - `backend/app/modules/prioritization/`;
 - `backend/app/modules/evaluation/`;
+- `backend/app/modules/decisions/`;
+- `backend/app/modules/regulatory_cases/`;
+- `backend/app/modules/digests/`;
 - `data/seed/`, `data/eval/`, `scripts/seed_demo.py`.
 
-### Инженер 2 — Analyst Workflow и интерфейс
+### Инженер 2 — frontend и demo-интеграция
 
 Владеет:
 
-- `backend/app/modules/reviews/`;
-- `backend/app/modules/regulatory_cases/`;
-- `backend/app/modules/digests/`;
 - `frontend/`;
 - `tests/e2e/`;
 - `docs/DEMO_SCENARIO.md`.
@@ -55,8 +55,21 @@
 ### Общая зона
 
 - `contracts/`, `README.md`, `rules.md`, `AGENTS.md`;
-- изменения общей зоны требуют согласования обоих контуров;
-- frontend сначала работает на JSON-примерах/моках и затем меняет только URL API.
+- изменения общей зоны требуют явного поручения владельца проекта и синхронизации
+  backend, frontend, OpenAPI, примеров и документации;
+- frontend генерирует типы из OpenAPI; ручные aliases, API-клиент и mock fixtures
+  должны использовать те же имена полей и схем.
+
+## Канонический HTTP naming v0.2
+
+- Пути состоят из существительных во множественном числе.
+- Создание вложенного ресурса: `POST /api/<resources>/{id}/<subresources>`.
+- Идемпотентная связь двух известных ресурсов: `PUT` с обоими ID в пути.
+- В URL не используются action-глаголы `analyze`, `refresh`, `run` и `import`.
+- Синхронный сбор возвращает фактический `CollectionReport`; нельзя возвращать
+  фиктивный `job_id`, если нет endpoint статуса и хранилища заданий.
+- Канонические схемы обмена: `Publication`, `AnalysisVersion`,
+  `SpecialistDecision`, `RegulatoryCase`, `LifecycleEvent`.
 
 ## Жёсткие инварианты
 
