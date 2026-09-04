@@ -1,4 +1,6 @@
 import type {
+  LifecycleEvent,
+  LifecycleEventCreate,
   PublicationDetail,
   PublicationHistory,
   PublicationList,
@@ -104,5 +106,13 @@ export const api = {
       `/api/regulatory-cases/${encodeURIComponent(id)}`,
       { signal },
     ),
+  createLifecycleEvent: (
+    caseId: string,
+    event: LifecycleEventCreate,
+    signal?: AbortSignal,
+  ) => request<LifecycleEvent>(
+    `/api/regulatory-cases/${encodeURIComponent(caseId)}/lifecycle-events`,
+    { method: 'POST', body: event, signal },
+  ),
   listSources: (signal?: AbortSignal) => request<Source[]>('/api/sources', { signal }),
 }

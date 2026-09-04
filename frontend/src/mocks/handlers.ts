@@ -2,6 +2,9 @@ import { http, HttpResponse } from 'msw'
 import type {
   ApiErrorBody,
   Category,
+  LifecycleEvent,
+  LifecycleEventCreate,
+  LifecycleStage,
   Priority,
   PublicationList,
   SpecialistDecision,
@@ -21,12 +24,26 @@ let decisions: SpecialistDecision[] = [...publicationHistory.decisions]
 let linkedPublicationIds = new Set(
   regulatoryCaseDetail.regulatory_case.related_publication_ids,
 )
+let lifecycleEvents: LifecycleEvent[] = [...regulatoryCaseDetail.timeline]
+let currentStage: LifecycleStage = regulatoryCaseDetail.regulatory_case.current_stage
+
+const allowedTransitions: Record<LifecycleStage, LifecycleStage[]> = {
+  draft: ['introduced'],
+  introduced: ['adopted'],
+  adopted: ['published'],
+  published: ['effective'],
+  effective: ['amended', 'repealed'],
+  amended: ['effective', 'repealed'],
+  repealed: [],
+}
 
 export function resetMockState() {
   decisions = [...publicationHistory.decisions]
   linkedPublicationIds = new Set(
     regulatoryCaseDetail.regulatory_case.related_publication_ids,
   )
+  lifecycleEvents = [...regulatoryCaseDetail.timeline]
+  currentStage = regulatoryCaseDetail.regulatory_case.current_stage
 }
 
 const notFound = (resource: string) =>
@@ -151,6 +168,7 @@ export const handlers = [
     regulatoryCases.map((item) => ({
       ...item,
       related_publication_ids: [...linkedPublicationIds],
+      current_stage: currentStage,
     })),
   )),
 
@@ -169,13 +187,61 @@ export const handlers = [
     params.caseId === regulatoryCaseDetail.regulatory_case.id
       ? HttpResponse.json({
           ...regulatoryCaseDetail,
+          timeline: lifecycleEvents,
           regulatory_case: {
             ...regulatoryCaseDetail.regulatory_case,
             related_publication_ids: [...linkedPublicationIds],
+            current_stage: currentStage,
           },
         })
       : notFound('Регуляторный кейс'),
   ),
+
+  http.post('*/api/regulatory-cases/:caseId/lifecycle-events', async ({ params, request }) => {
+    if (params.caseId !== regulatoryCaseDetail.regulatory_case.id) {
+      return notFound('Регуляторный кейс')
+    }
+
+    const body = await request.json() as LifecycleEventCreate
+    const sourceType = body.confirmation_source_type as string
+    if (
+      !body.stage ||
+      !body.occurred_at ||
+      !body.confirmation_url ||
+      !body.author_id ||
+      !['regulator', 'official_publication'].includes(sourceType)
+    ) {
+      return HttpResponse.json(
+        { code: 'validation_error', message: 'Поля официального события невалидны' },
+        { status: 422 },
+      )
+    }
+
+    const isInitialConfirmation = lifecycleEvents.length === 0 && body.stage === currentStage
+    if (!isInitialConfirmation && !allowedTransitions[currentStage].includes(body.stage)) {
+      return HttpResponse.json(
+        {
+          code: 'conflict',
+          message: 'Недопустимый переход стадии regulatory case',
+          details: { current_stage: currentStage, requested_stage: body.stage },
+        } satisfies ApiErrorBody,
+        { status: 409 },
+      )
+    }
+
+    const createdAt = new Date().toISOString()
+    const lifecycleEvent = {
+      ...body,
+      occurred_at: new Date(body.occurred_at).toISOString(),
+      comment: body.comment ?? null,
+      id: `event-mock-${lifecycleEvents.length + 1}`,
+      regulatory_case_id: String(params.caseId),
+      created_at: createdAt,
+    } satisfies LifecycleEvent
+    lifecycleEvents = [...lifecycleEvents, lifecycleEvent]
+    currentStage = body.stage
+    return HttpResponse.json(lifecycleEvent, { status: 201 })
+  }),
 
   http.get('*/api/sources', () => HttpResponse.json(sources)),
 ]
