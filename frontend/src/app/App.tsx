@@ -1,4 +1,5 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { TelegramIntegration } from '../shared/telegram/TelegramIntegration'
 
 const navigation = [
   { to: '/feed', label: 'Лента' },
@@ -13,6 +14,7 @@ export function App() {
 
   return (
     <div className="app-shell">
+      <TelegramIntegration />
       <header className="app-header">
         <NavLink className="brand" to="/feed" aria-label="Insight — на главную">
           <span className="brand-mark" aria-hidden="true">I<span>·</span></span>
