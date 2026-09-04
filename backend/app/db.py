@@ -41,10 +41,18 @@ def create_schema(engine: Engine) -> None:
     """Create missing demo tables without changing existing rows."""
 
     from backend.app.modules.analysis import models as _analysis_models
+    from backend.app.modules.decisions import models as _decision_models
     from backend.app.modules.publications import models as _publication_models
+    from backend.app.modules.regulatory_cases import models as _case_models
     from backend.app.modules.sources import models as _source_models
 
-    _ = (_analysis_models, _publication_models, _source_models)
+    _ = (
+        _analysis_models,
+        _case_models,
+        _decision_models,
+        _publication_models,
+        _source_models,
+    )
     _ensure_sqlite_parent(engine)
     Base.metadata.create_all(engine)
 

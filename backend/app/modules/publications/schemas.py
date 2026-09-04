@@ -132,3 +132,11 @@ class PublicationList(BaseModel):
     total: int = Field(ge=0)
     limit: int = Field(ge=1)
     offset: int = Field(ge=0)
+
+
+class PublicationHistory(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    publication_id: str
+    analyses: list[AnalysisVersionResponse]
+    decisions: list[SpecialistDecision]

@@ -16,7 +16,8 @@
 - AI создаёт версию `AnalysisVersion` и предлагает приоритет. Финальное решение
   хранится отдельно как `SpecialistDecision` и принадлежит человеку.
 - Текущий backend реализует health, source CRUD без delete, demo seed, read API
-  публикаций, создание analysis versions, file/RSS collection и exact dedup.
+  публикаций, создание analysis versions и specialist decisions, историю,
+  чтение кейсов НПА, идемпотентную привязку, file/RSS collection и exact dedup.
 - Semantic dedup сохраняет только кандидатов на ручную проверку и не удаляет данные.
 - Demo/replay работает без сети. Qwen adapters ленивые; веса автоматически не
   скачиваются.
@@ -53,4 +54,5 @@
 - Независимо размеченный quality eval-набор и измеренные quality/latency показатели.
 - Реальный доступ к Telegram, HTML-страницам регуляторов и URL Правового комитета АРПП.
 - Правила lifecycle-переходов, сроки хранения и архивирования.
-- Полный publication CRUD, модуль decisions, regulatory cases и digest API.
+- Полный publication CRUD, создание/редактирование кейсов НПА, lifecycle transitions
+  и digest API.

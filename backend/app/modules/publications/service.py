@@ -9,6 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.modules.analysis.models import AnalysisVersion
+from backend.app.modules.decisions.models import SpecialistDecision as DecisionModel
+from backend.app.modules.decisions.service import decision_response
 from backend.app.modules.publications.models import Publication
 from backend.app.modules.publications.schemas import (
     AnalysisVersionResponse,
@@ -51,13 +53,19 @@ def list_publications(
 ) -> PublicationList:
     publications = session.scalars(select(Publication)).all()
     analyses = _latest_analyses(session)
+    decisions = _latest_decisions(session)
     source_types = dict(session.execute(select(Source.id, Source.type)).all())
 
     matched: list[PublicationDetail] = []
     for publication in publications:
         analysis = analyses.get(publication.id)
         payload = json.loads(publication.payload_json)
-        detail = _publication_detail(publication, analysis, payload)
+        detail = _publication_detail(
+            publication,
+            analysis,
+            decisions.get(publication.id),
+            payload,
+        )
         if _matches(detail, payload, source_types, filters):
             matched.append(detail)
 
@@ -81,9 +89,16 @@ def get_publication(session: Session, publication_id: str) -> PublicationDetail 
         .order_by(AnalysisVersion.version.desc())
         .limit(1)
     ).first()
+    decision = session.scalars(
+        select(DecisionModel)
+        .where(DecisionModel.publication_id == publication_id)
+        .order_by(DecisionModel.version.desc())
+        .limit(1)
+    ).first()
     return _publication_detail(
         publication,
         analysis,
+        decision,
         json.loads(publication.payload_json),
     )
 
@@ -96,6 +111,19 @@ def _latest_analyses(session: Session) -> dict[str, AnalysisVersion]:
         )
     ).all()
     latest: dict[str, AnalysisVersion] = {}
+    for row in rows:
+        latest.setdefault(row.publication_id, row)
+    return latest
+
+
+def _latest_decisions(session: Session) -> dict[str, DecisionModel]:
+    rows = session.scalars(
+        select(DecisionModel).order_by(
+            DecisionModel.publication_id,
+            DecisionModel.version.desc(),
+        )
+    ).all()
+    latest: dict[str, DecisionModel] = {}
     for row in rows:
         latest.setdefault(row.publication_id, row)
     return latest
@@ -120,6 +148,7 @@ def _analysis_response(row: AnalysisVersion | None) -> AnalysisVersionResponse |
 def _publication_detail(
     row: Publication,
     analysis_row: AnalysisVersion | None,
+    decision_row: DecisionModel | None,
     payload: dict[str, Any],
 ) -> PublicationDetail:
     analysis = _analysis_response(analysis_row)
@@ -139,7 +168,7 @@ def _publication_detail(
     return PublicationDetail(
         publication=publication,
         latest_analysis=analysis,
-        latest_decision=None,
+        latest_decision=decision_response(decision_row) if decision_row else None,
     )
 
 

@@ -4,9 +4,11 @@ import type {
   Publication,
   PublicationDetail,
   PublicationList,
+  PublicationHistory,
   RegulatoryCase,
   RegulatoryCaseDetail,
   Source,
+  SpecialistDecision,
 } from '../shared/api/types'
 
 const defaultCriteria = {
@@ -73,7 +75,7 @@ const publication001 = publication(
     published_at: '2026-09-01T07:30:00Z',
     content:
       'Демонстрационный материал: регулятор опубликовал проект требований и установил срок общественного обсуждения.',
-    latest_analysis_id: 'analysis-001',
+    latest_analysis_id: 'analysis-001-v2',
   },
   '1',
 )
@@ -138,24 +140,88 @@ const publication009 = publication(
   '9',
 )
 
+export const analysis001v1 = analysis(
+  {
+    id: 'analysis-001',
+    publication_id: 'pub-001',
+    summary:
+      'Опубликован демонстрационный проект требований. Документ находится на стадии общественного обсуждения.',
+    category: 'regulation',
+    proposed_priority: 'medium',
+    score: 6,
+    uncertainty: 0.24,
+    needs_review: true,
+  },
+  publication001,
+)
+
+export const analysis001v2 = {
+  ...analysis001v1,
+  id: 'analysis-001-v2',
+  version: 2,
+  model: 'demo-replay-v2',
+  prompt_version: 'analysis-v2',
+  summary:
+    'Опубликован демонстрационный проект требований. Документ находится на стадии общественного обсуждения. Специалисту нужно проверить применимость требований и срок подачи замечаний.',
+  facts: [
+    'Опубликован проект требований',
+    'Указан период общественного обсуждения',
+  ],
+  entities: [
+    { type: 'document', value: 'проект требований' },
+    { type: 'topic', value: 'обработка данных' },
+  ],
+  category: 'regulation' as const,
+  proposed_priority: 'high' as const,
+  criteria: {
+    K1: 3,
+    K2: 2,
+    K3: 3,
+    K4: 1,
+    K5: 1,
+    K6: 0,
+    H1: false,
+    H2: false,
+    H3: false,
+    H4: false,
+  },
+  score: 10,
+  evidence: [
+    {
+      claim: 'Документ находится на обсуждении',
+      quote: 'установил срок общественного обсуждения',
+    },
+  ],
+  uncertainty: 0.12,
+  needs_review: true,
+  created_at: '2026-09-01T12:05:00Z',
+} satisfies AnalysisVersion
+
+export const existingDecision = {
+  id: 'decision-001',
+  publication_id: 'pub-001',
+  analysis_id: 'analysis-001',
+  version: 1,
+  status: 'corrected',
+  final_summary: 'Проект требований опубликован для обсуждения.',
+  final_category: 'regulation',
+  final_priority: 'high',
+  comment: 'Проверено по первоисточнику.',
+  author_id: 'user-gr-001',
+  created_at: '2026-09-01T12:20:00Z',
+} satisfies SpecialistDecision
+
+export const publicationHistory = {
+  publication_id: 'pub-001',
+  analyses: [analysis001v1, analysis001v2],
+  decisions: [existingDecision],
+} satisfies PublicationHistory
+
 export const publicationDetails = [
   {
     publication: publication001,
-    latest_analysis: analysis(
-      {
-        id: 'analysis-001',
-        publication_id: 'pub-001',
-        summary:
-          'Опубликован демонстрационный проект требований. Документ находится на стадии общественного обсуждения. Специалисту нужно проверить применимость требований и срок подачи замечаний.',
-        category: 'regulation',
-        proposed_priority: 'high',
-        score: 10,
-        uncertainty: 0.12,
-        needs_review: true,
-      },
-      publication001,
-    ),
-    latest_decision: null,
+    latest_analysis: analysis001v2,
+    latest_decision: existingDecision,
   },
   {
     publication: publication004,
@@ -238,16 +304,18 @@ export const publicationList = {
   offset: 0,
 } satisfies PublicationList
 
-const regulatoryCase = {
+export const regulatoryCase = {
   id: 'case-001',
   title: 'Демонстрационные требования к обработке данных',
   registration_number: 'DEMO-2026-001',
   current_stage: 'draft',
   responsible_user_id: 'user-gr-001',
-  related_publication_ids: ['pub-001'],
+  related_publication_ids: [],
   created_at: '2026-09-01T08:10:00Z',
   updated_at: '2026-09-01T08:10:00Z',
 } satisfies RegulatoryCase
+
+export const regulatoryCases = [regulatoryCase] satisfies RegulatoryCase[]
 
 const lifecycleEvent = {
   id: 'event-001',
