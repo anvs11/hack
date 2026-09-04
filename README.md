@@ -11,7 +11,8 @@ MVP собирает публикации из СМИ, регуляторных 
 1. структура репозитория;
 2. модели API в `contracts/openapi.yaml`;
 3. эталонные JSON в `contracts/examples/`;
-4. offline seed: 5 источников, 10 публикаций и 10 replay-анализов;
+4. offline seed: 5 источников, 10 публикаций, 10 replay-анализов
+   и 1 демонстрационный кейс НПА;
 5. синхронный сбор с отчётом, exact dedup и optional semantic candidates;
 6. replay-анализ и ленивые Hugging Face adapters без автоматического скачивания;
 7. канонические команды запуска backend и frontend.
@@ -71,9 +72,10 @@ protected context из `rules.md`.
 - `GET /api/publications`, `GET /api/publications/{publication_id}`;
 - `POST /api/publications/{publication_id}/analyses`.
 
-Операции decisions, history и regulatory cases уже зафиксированы в OpenAPI, но ещё
-не подключены к FastAPI. Канонические имена и JSON-форматы описаны только в
-`contracts/openapi.yaml`.
+Для карточки публикации также реализованы создание append-only решений,
+история анализов/решений, чтение кейсов НПА и идемпотентная привязка
+публикации к кейсу. Lifecycle transitions и создание кейсов в этот срез не входят.
+Канонические имена и JSON-форматы описаны только в `contracts/openapi.yaml`.
 
 ## Канонические команды
 
@@ -122,6 +124,7 @@ UI: `http://127.0.0.1:5173`.
 python3 -m json.tool data/seed/sources.json >/dev/null
 python3 -m json.tool data/seed/publications.json >/dev/null
 python3 -m json.tool data/seed/replay-analyses.json >/dev/null
+python3 -m json.tool data/seed/regulatory-cases.json >/dev/null
 ruby -e "require 'yaml'; YAML.load_file('contracts/openapi.yaml')"
 .venv/bin/python -m pytest backend/tests -q
 .venv/bin/python scripts/evaluate_analysis.py
