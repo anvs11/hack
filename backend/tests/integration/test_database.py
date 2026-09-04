@@ -45,6 +45,7 @@ def test_create_schema_builds_the_current_tables(tmp_path: Path) -> None:
     assert set(inspect(engine).get_table_names()) == {
         "analysis_versions",
         "duplicate_candidates",
+        "lifecycle_events",
         "publications",
         "regulatory_case_publications",
         "regulatory_cases",

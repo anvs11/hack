@@ -3,7 +3,7 @@
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import AnyUrl, BaseModel, ConfigDict
+from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
 
 class LifecycleStage(StrEnum):
@@ -19,6 +19,27 @@ class LifecycleStage(StrEnum):
 class ConfirmationSourceType(StrEnum):
     REGULATOR = "regulator"
     OFFICIAL_PUBLICATION = "official_publication"
+
+
+class RegulatoryCaseCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str
+    registration_number: str
+    current_stage: LifecycleStage
+    responsible_user_id: str
+    related_publication_ids: list[str] = Field(default_factory=list)
+
+
+class LifecycleEventCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    stage: LifecycleStage
+    occurred_at: datetime
+    confirmation_url: AnyUrl
+    confirmation_source_type: ConfirmationSourceType
+    comment: str | None = None
+    author_id: str
 
 
 class RegulatoryCaseResponse(BaseModel):

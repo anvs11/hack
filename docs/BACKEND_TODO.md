@@ -748,25 +748,33 @@ DoD: eval воспроизводим и не изменяет разметку �
 
 Зависимости: A6 и G1. Владелец по `AGENTS.md`: backend-разработчик.
 
-- [ ] Реализовать `createSpecialistDecision` как append-only version.
-- [ ] Проверять связь `publication_id` ↔ `analysis_id`.
-- [ ] Реализовать `getPublicationHistory` с хронологией анализов и решений.
-- [ ] Протестировать confirmed/corrected/rejected и неизменность AI-версий.
+- [x] Реализовать `createSpecialistDecision` как append-only version.
+- [x] Проверять связь `publication_id` ↔ `analysis_id`.
+- [x] Реализовать `getPublicationHistory` с хронологией анализов и решений.
+- [x] Протестировать confirmed/corrected/rejected и неизменность AI-версий.
 
 DoD: финальное решение создаёт только specialist endpoint; история не затирается.
+
+Статус 2026-09-04: **реализовано в B3**. `SpecialistDecision` хранится
+отдельно от AI-анализа; версии решений и история append-only.
 
 ### W2 — RegulatoryCase и lifecycle
 
 Зависимости: A4 и G1. Владелец по `AGENTS.md`: backend-разработчик.
 
-- [ ] Реализовать `listRegulatoryCases`, `createRegulatoryCase`, `getRegulatoryCase`.
-- [ ] Реализовать idempotent `linkPublicationToCase`.
-- [ ] Согласовать конечный автомат допустимых lifecycle-переходов.
-- [ ] Реализовать `createLifecycleEvent` и 409 на неверный переход.
-- [ ] Проверить запрет Telegram/СМИ как подтверждения стадии.
+- [x] Реализовать `listRegulatoryCases`, `createRegulatoryCase`, `getRegulatoryCase`.
+- [x] Реализовать idempotent `linkPublicationToCase`.
+- [x] Согласовать конечный автомат допустимых lifecycle-переходов.
+- [x] Реализовать `createLifecycleEvent` и 409 на неверный переход.
+- [x] Проверить запрет Telegram/СМИ как подтверждения стадии.
 
 DoD: timeline append-only; current stage и событие обновляются одной транзакцией;
 повторная link-операция не создаёт вторую связь.
+
+Статус 2026-09-04: **реализовано в B3–B4**. B3 добавил read API и
+идемпотентный link; B4 добавил создание кейса, `lifecycle_events`,
+проверяемую матрицу переходов, DB-backed timeline и атомарное обновление
+текущей стадии. Принимаются только `regulator` и `official_publication`.
 
 ### W3 — digest
 
@@ -822,12 +830,13 @@ DoD: сквозной сценарий воспроизводится с нул�
    текущий OpenAPI не содержит `POST/PATCH/DELETE /api/publications`.
 2. **Факт:** кейс требует удаление/скрытие источника; контракт позволяет только
    `PATCH enabled=false`, но не содержит DELETE.
-3. **Факт:** UI ожидает demo-кейс `case-001`, но `data/seed/` не содержит cases,
-   lifecycle events или specialist decisions.
+3. **Факт:** `case-001` уже входит в seed; lifecycle events и specialist
+   decisions намеренно остаются runtime append-only данными.
 4. **Факт:** продуктовые материалы называют критерии новостей N1–N4, а OpenAPI
    требует H1–H4; формула и thresholds score в контракте не описаны.
 5. **Факт:** digest endpoint в OpenAPI отсутствует.
-6. **Открытый вопрос:** конечный автомат допустимых lifecycle-переходов не описан.
+6. **Решено в B4:** матрица lifecycle-переходов зафиксирована в
+   protected context и проверяется чистой функцией backend.
 7. **Факт:** описание query-поиска включает tags, но `Publication` не содержит
     поля tags; ручное редактирование тегов также отсутствует в текущем контракте.
 8. **Факт:** безопасный AI-контур должен уметь сохранить `unknown` при нехватке

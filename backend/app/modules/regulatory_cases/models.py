@@ -1,4 +1,4 @@
-"""Storage models for regulatory cases and publication links."""
+"""Storage models for regulatory cases, publication links and lifecycle events."""
 
 from sqlalchemy import ForeignKey, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -33,4 +33,22 @@ class RegulatoryCasePublication(Base):
         ForeignKey("publications.id"),
         nullable=False,
     )
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class LifecycleEvent(Base):
+    __tablename__ = "lifecycle_events"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    regulatory_case_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("regulatory_cases.id"),
+        nullable=False,
+    )
+    stage: Mapped[str] = mapped_column(Text, nullable=False)
+    occurred_at: Mapped[str] = mapped_column(Text, nullable=False)
+    confirmation_url: Mapped[str] = mapped_column(Text, nullable=False)
+    confirmation_source_type: Mapped[str] = mapped_column(Text, nullable=False)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    author_id: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
