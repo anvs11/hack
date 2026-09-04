@@ -2,11 +2,15 @@ import { http, HttpResponse } from 'msw'
 import type {
   ApiErrorBody,
   Category,
+  CollectionReport,
   LifecycleEvent,
   LifecycleEventCreate,
   LifecycleStage,
   Priority,
   PublicationList,
+  Source,
+  SourceCreate,
+  SourcePatch,
   SpecialistDecision,
   SpecialistDecisionCreate,
   SourceType,
@@ -26,6 +30,9 @@ let linkedPublicationIds = new Set(
 )
 let lifecycleEvents: LifecycleEvent[] = [...regulatoryCaseDetail.timeline]
 let currentStage: LifecycleStage = regulatoryCaseDetail.regulatory_case.current_stage
+let mutableSources: Source[] = sources.map((source) => ({ ...source }))
+let nextSourceId = 1
+let collectionRun = 0
 
 const allowedTransitions: Record<LifecycleStage, LifecycleStage[]> = {
   draft: ['introduced'],
@@ -44,6 +51,9 @@ export function resetMockState() {
   )
   lifecycleEvents = [...regulatoryCaseDetail.timeline]
   currentStage = regulatoryCaseDetail.regulatory_case.current_stage
+  mutableSources = sources.map((source) => ({ ...source }))
+  nextSourceId = 1
+  collectionRun = 0
 }
 
 const notFound = (resource: string) =>
@@ -243,5 +253,117 @@ export const handlers = [
     return HttpResponse.json(lifecycleEvent, { status: 201 })
   }),
 
-  http.get('*/api/sources', () => HttpResponse.json(sources)),
+  http.get('*/api/sources', () => HttpResponse.json(mutableSources)),
+
+  http.post('*/api/sources', async ({ request }) => {
+    const body = await request.json() as SourceCreate
+    if (!body.name?.trim() || !body.type || !body.url) {
+      return HttpResponse.json(
+        { code: 'validation_error', message: 'Проверьте название, тип и URL источника' } satisfies ApiErrorBody,
+        { status: 422 },
+      )
+    }
+
+    const source = {
+      id: `source-mock-${String(nextSourceId).padStart(3, '0')}`,
+      name: body.name,
+      type: body.type,
+      url: body.url,
+      enabled: body.enabled ?? true,
+      last_checked_at: null,
+      last_success_at: null,
+      last_error: null,
+      is_demo: false,
+    } satisfies Source
+    nextSourceId += 1
+    mutableSources = [...mutableSources, source]
+    return HttpResponse.json(source, { status: 201 })
+  }),
+
+  http.patch('*/api/sources/:sourceId', async ({ params, request }) => {
+    const sourceIndex = mutableSources.findIndex((source) => source.id === params.sourceId)
+    if (sourceIndex < 0) return notFound('Источник')
+
+    const body = await request.json() as SourcePatch
+    if (Object.keys(body).length === 0 || (body.name !== undefined && !body.name.trim())) {
+      return HttpResponse.json(
+        { code: 'validation_error', message: 'Изменения источника невалидны' } satisfies ApiErrorBody,
+        { status: 422 },
+      )
+    }
+
+    const current = mutableSources[sourceIndex]
+    const updated = {
+      ...current,
+      ...(body.name === undefined ? {} : { name: body.name }),
+      ...(body.url === undefined ? {} : { url: body.url }),
+      ...(body.enabled === undefined ? {} : { enabled: body.enabled }),
+    }
+    mutableSources = mutableSources.map((source, index) =>
+      index === sourceIndex ? updated : source,
+    )
+    return HttpResponse.json(updated)
+  }),
+
+  http.post('*/api/sources/:sourceId/collections', ({ params }) => {
+    const sourceIndex = mutableSources.findIndex((source) => source.id === params.sourceId)
+    if (sourceIndex < 0) return notFound('Источник')
+
+    collectionRun += 1
+    const sourceId = String(params.sourceId)
+    const startedAt = `2026-09-04T12:${String(collectionRun).padStart(2, '0')}:00Z`
+    const finishedAt = `2026-09-04T12:${String(collectionRun).padStart(2, '0')}:05Z`
+    const isFailed = sourceId === 'source-telegram-archive'
+    const isPartial = sourceId === 'source-media-rss-2'
+    const result = isFailed
+      ? {
+          source_id: sourceId,
+          status: 'failed' as const,
+          collected: 0,
+          created: 0,
+          exact_duplicates: 0,
+          semantic_candidates: 0,
+          error: 'Архив временно недоступен',
+        }
+      : isPartial
+        ? {
+            source_id: sourceId,
+            status: 'partial' as const,
+            collected: 3,
+            created: 1,
+            exact_duplicates: 1,
+            semantic_candidates: 1,
+            error: 'Одна запись пропущена',
+          }
+        : {
+            source_id: sourceId,
+            status: 'success' as const,
+            collected: 3,
+            created: 2,
+            exact_duplicates: 1,
+            semantic_candidates: 1,
+            error: null,
+          }
+    const report = {
+      status: isFailed ? 'failed' : isPartial ? 'partial_failure' : 'completed',
+      started_at: startedAt,
+      finished_at: finishedAt,
+      sources: [result],
+      collected: result.collected,
+      created: result.created,
+      exact_duplicates: result.exact_duplicates,
+      semantic_candidates: result.semantic_candidates,
+    } satisfies CollectionReport
+
+    const previous = mutableSources[sourceIndex]
+    mutableSources = mutableSources.map((source, index) => index === sourceIndex
+      ? {
+          ...previous,
+          last_checked_at: finishedAt,
+          last_success_at: result.status === 'success' ? finishedAt : previous.last_success_at,
+          last_error: result.error,
+        }
+      : source)
+    return HttpResponse.json(report)
+  }),
 ]

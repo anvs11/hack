@@ -1,12 +1,16 @@
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '../../test/setup'
-import { api } from './client'
-import { publicationHistory, regulatoryCases } from '../../mocks/fixtures'
+import { ApiError, api } from './client'
+import { publicationHistory, regulatoryCases, sources } from '../../mocks/fixtures'
 import type {
+  CollectionReport,
   LifecycleEvent,
   LifecycleEventCreate,
   PublicationList,
+  Source,
+  SourceCreate,
+  SourcePatch,
   SpecialistDecision,
   SpecialistDecisionCreate,
 } from './types'
@@ -141,5 +145,108 @@ describe('publication API client', () => {
     expect(requestedPath).toBe('/api/regulatory-cases/case%2Fencoded/lifecycle-events')
     expect(received).toEqual(payload)
     expect(lifecycleEvent.stage).toBe('introduced')
+  })
+})
+
+describe('source API client', () => {
+  it('creates a source with the exact JSON body', async () => {
+    let received: SourceCreate | null = null
+    const payload = {
+      name: 'Новая RSS-лента',
+      type: 'rss',
+      url: 'https://example.org/new.xml',
+      enabled: true,
+    } satisfies SourceCreate
+    server.use(
+      http.post('*/api/sources', async ({ request }) => {
+        received = await request.json() as SourceCreate
+        return HttpResponse.json({
+          ...payload,
+          id: 'source-client-test',
+          last_checked_at: null,
+          last_success_at: null,
+          last_error: null,
+          is_demo: false,
+        } satisfies Source, { status: 201 })
+      }),
+    )
+
+    const created = await api.createSource(payload)
+
+    expect(received).toEqual(payload)
+    expect(created.id).toBe('source-client-test')
+  })
+
+  it('patches a URL-encoded source ID with the exact JSON body', async () => {
+    let requestedPath = ''
+    let received: SourcePatch | null = null
+    const patch = { name: 'Обновлённый источник', enabled: false } satisfies SourcePatch
+    server.use(
+      http.patch('*/api/sources/:sourceId', async ({ request }) => {
+        requestedPath = new URL(request.url).pathname
+        received = await request.json() as SourcePatch
+        return HttpResponse.json({ ...sources[0], ...patch })
+      }),
+    )
+
+    await api.updateSource('source/encoded', patch)
+
+    expect(requestedPath).toBe('/api/sources/source%2Fencoded')
+    expect(received).toEqual(patch)
+  })
+
+  it('collects an encoded source and returns a typed CollectionReport', async () => {
+    let requestedPath = ''
+    const report = {
+      status: 'completed',
+      started_at: '2026-09-04T12:00:00Z',
+      finished_at: '2026-09-04T12:00:05Z',
+      sources: [{
+        source_id: 'source/encoded',
+        status: 'success',
+        collected: 3,
+        created: 2,
+        exact_duplicates: 1,
+        semantic_candidates: 1,
+        error: null,
+      }],
+      collected: 3,
+      created: 2,
+      exact_duplicates: 1,
+      semantic_candidates: 1,
+    } satisfies CollectionReport
+    server.use(
+      http.post('*/api/sources/:sourceId/collections', ({ request }) => {
+        requestedPath = new URL(request.url).pathname
+        return HttpResponse.json(report)
+      }),
+    )
+
+    const result: CollectionReport = await api.collectSource('source/encoded')
+
+    expect(requestedPath).toBe('/api/sources/source%2Fencoded/collections')
+    expect(result.sources[0].status).toBe('success')
+  })
+
+  it('throws ApiError for an unsuccessful source response', async () => {
+    server.use(
+      http.post('*/api/sources', () =>
+        HttpResponse.json({ message: 'Источник отклонён' }, { status: 422 }),
+      ),
+    )
+
+    const request = api.createSource({
+      name: 'Невалидный',
+      type: 'rss',
+      url: 'https://example.org/feed',
+    })
+
+    const error = await request.catch((caught: unknown) => caught)
+    expect(error).toBeInstanceOf(ApiError)
+    expect(error).toMatchObject({
+      name: 'ApiError',
+      status: 422,
+      message: 'Источник отклонён',
+    })
   })
 })
