@@ -182,6 +182,8 @@ describe('analyst feed', () => {
     renderFeed()
 
     expect(await screen.findByRole('heading', { name: 'Публикаций нет' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('В ленте пока нет материалов.')
+    expect(screen.getByRole('status')).not.toHaveTextContent('mock')
   })
 
   it('shows the API error state', async () => {
