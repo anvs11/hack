@@ -17,7 +17,8 @@
   хранится отдельно как `SpecialistDecision` и принадлежит человеку.
 - Текущий backend реализует health, source CRUD без delete, demo seed, read API
   публикаций, создание analysis versions и specialist decisions, историю,
-  чтение кейсов НПА, идемпотентную привязку, file/RSS collection и exact dedup.
+  чтение и создание кейсов НПА, идемпотентную привязку, append-only lifecycle
+  с атомарной проекцией текущей стадии, file/RSS collection и exact dedup.
 - Semantic dedup сохраняет только кандидатов на ручную проверку и не удаляет данные.
 - Demo/replay работает без сети. Qwen adapters ленивые; веса автоматически не
   скачиваются.
@@ -32,6 +33,8 @@
   `occurred_at`; nullable-поля ответа присутствуют явно со значением `null`.
 - OpenAPI — единственный источник истины. Frontend `schema.d.ts` генерируется из
   `contracts/openapi.yaml`.
+- Lifecycle принимает только официальные `regulator` и `official_publication`;
+  матрица переходов зафиксирована в `rules.md`.
 
 ## Выводы
 
@@ -53,6 +56,5 @@
 - Финальная методика scoring и набор критериев для разных типов публикаций.
 - Независимо размеченный quality eval-набор и измеренные quality/latency показатели.
 - Реальный доступ к Telegram, HTML-страницам регуляторов и URL Правового комитета АРПП.
-- Правила lifecycle-переходов, сроки хранения и архивирования.
-- Полный publication CRUD, создание/редактирование кейсов НПА, lifecycle transitions
-  и digest API.
+- Сроки хранения и архивирования lifecycle-истории.
+- Полный publication CRUD, редактирование кейсов НПА и digest API.

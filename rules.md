@@ -37,6 +37,20 @@ HTTP naming версии 0.2:
 - AI не может записывать `final_priority`;
 - lifecycle НПА — append-only последовательность `LifecycleEvent`.
 
+Допустимые lifecycle-переходы:
+
+- `draft → introduced`;
+- `introduced → adopted`;
+- `adopted → published`;
+- `published → effective`;
+- `effective → amended | repealed`;
+- `amended → effective | repealed`;
+- из `repealed` переходов нет.
+
+Первое lifecycle event может подтвердить уже указанную `current_stage`.
+После первого события повтор текущей стадии, skip и обратный переход отклоняются
+с `409`. Событие и `RegulatoryCase.current_stage` записываются в одной транзакции.
+
 ## 4. Seed и локальная БД
 
 - коммитятся только `data/seed/*.json` и обезличенные данные `data/eval/`;

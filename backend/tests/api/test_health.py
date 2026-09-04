@@ -88,6 +88,7 @@ def test_only_implemented_api_routes_are_exposed() -> None:
         "/api/publications/{publication_id}/history",
         "/api/regulatory-cases",
         "/api/regulatory-cases/{case_id}",
+        "/api/regulatory-cases/{case_id}/lifecycle-events",
         "/api/regulatory-cases/{case_id}/publications/{publication_id}",
         "/api/sources",
         "/api/sources/{source_id}",
@@ -107,6 +108,13 @@ def test_only_implemented_api_routes_are_exposed() -> None:
     assert publication_detail["operationId"] == "getPublication"
     analyze = schema["paths"]["/api/publications/{publication_id}/analyses"]["post"]
     assert analyze["operationId"] == "createPublicationAnalysis"
+    assert schema["paths"]["/api/regulatory-cases"]["post"]["operationId"] == (
+        "createRegulatoryCase"
+    )
+    lifecycle = schema["paths"][
+        "/api/regulatory-cases/{case_id}/lifecycle-events"
+    ]["post"]
+    assert lifecycle["operationId"] == "createLifecycleEvent"
     assert schema["paths"]["/api/sources"]["get"]["operationId"] == "listSources"
     assert schema["paths"]["/api/sources"]["post"]["operationId"] == "createSource"
     assert schema["paths"]["/api/sources/{source_id}"]["patch"]["operationId"] == (

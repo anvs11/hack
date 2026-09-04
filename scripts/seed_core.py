@@ -124,6 +124,18 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL,
             UNIQUE(case_id, publication_id)
         );
+
+        CREATE TABLE IF NOT EXISTS lifecycle_events (
+            id TEXT PRIMARY KEY,
+            regulatory_case_id TEXT NOT NULL REFERENCES regulatory_cases(id),
+            stage TEXT NOT NULL,
+            occurred_at TEXT NOT NULL,
+            confirmation_url TEXT NOT NULL,
+            confirmation_source_type TEXT NOT NULL,
+            comment TEXT,
+            author_id TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
         """
     )
 
@@ -234,7 +246,6 @@ def import_seed(database: Path) -> tuple[int, int, int]:
                 ON CONFLICT(id) DO UPDATE SET
                     title = excluded.title,
                     registration_number = excluded.registration_number,
-                    current_stage = excluded.current_stage,
                     responsible_user_id = excluded.responsible_user_id
                 """,
                 (
