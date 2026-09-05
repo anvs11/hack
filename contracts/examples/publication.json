@@ -9,5 +9,10 @@
   "content": "Демонстрационный материал: регулятор опубликовал проект требований и установил срок общественного обсуждения.",
   "content_hash": "sha256:96f1261f1bebf3d64e379a0e23bf774da16a08de83056aefeda661c8ed367c45",
   "is_demo": true,
-  "latest_analysis_id": "analysis-001"
+  "latest_analysis_id": "analysis-001",
+  "latest_revision_id": null,
+  "tags": [],
+  "is_hidden": false,
+  "is_manual": false,
+  "updated_at": "2026-09-01T07:35:00Z"
 }

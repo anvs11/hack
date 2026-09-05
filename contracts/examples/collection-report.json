@@ -8,6 +8,8 @@
       "status": "success",
       "collected": 4,
       "created": 1,
+      "already_seen": 2,
+      "content_duplicates": 1,
       "exact_duplicates": 3,
       "semantic_candidates": 0,
       "error": null
@@ -15,6 +17,8 @@
   ],
   "collected": 4,
   "created": 1,
+  "already_seen": 2,
+  "content_duplicates": 1,
   "exact_duplicates": 3,
   "semantic_candidates": 0
 }
