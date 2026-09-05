@@ -25,21 +25,22 @@ test('real API demo: решение и lifecycle отражаются в дай�
 
   try {
     await page.goto('/feed')
-    await expect(page.getByRole('heading', { name: 'Лента сигналов' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /Мониторинг/ })).toBeVisible()
     await expect(page.getByLabel('10 публикаций')).toBeVisible()
-    await expect(page.getByRole('link', { name: publicationTitle })).toBeVisible()
+    await expect(page.getByRole('link', { name: publicationTitle, exact: true })).toBeVisible()
 
     await page.getByLabel('AI-приоритет').selectOption('high')
     await expect(page).toHaveURL(/(?:\?|&)proposed_priority=high(?:&|$)/)
     await expect(page.getByText('Активно: 1')).toBeVisible()
-    await expect(page.getByRole('link', { name: publicationTitle })).toBeVisible()
-    await expect(page.getByRole('link', { name: excludedPublicationTitle })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: publicationTitle, exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: excludedPublicationTitle, exact: true })).toHaveCount(0)
 
-    await page.getByRole('link', { name: publicationTitle }).click()
-    await expect(page.getByRole('heading', { level: 1, name: publicationTitle })).toBeVisible()
+    await page.getByRole('link', { name: publicationTitle, exact: true }).click()
+    await expect(page.getByRole('heading', { level: 1, name: publicationTitle, exact: true })).toBeVisible()
     await expect(page.getByText('analysis-001 · v1')).toBeVisible()
     await expect(page.getByText('AI-приоритет · Высокий', { exact: true })).toBeVisible()
-    await expect(page.getByText('1 AI · 0 решений')).toBeVisible()
+    await page.locator('.history-disclosure > summary').click()
+    await expect(page.getByText('1 AI · 0 решений', { exact: false }).first()).toBeVisible()
     await expect(page.getByText('Решений специалиста ещё нет.')).toBeVisible()
 
     await page.getByLabel('Финальный приоритет').selectOption('critical')
@@ -57,7 +58,7 @@ test('real API demo: решение и lifecycle отражаются в дай�
     await expect(latestDecision).toContainText('Скорректировано')
     await expect(latestDecision).toContainText('Финальный приоритетКритический')
     await expect(latestDecision).toContainText(decisionComment)
-    await expect(page.getByText('1 AI · 1 решений')).toBeVisible()
+    await expect(page.getByText('1 AI · 1 решений', { exact: false }).first()).toBeVisible()
     await expect(page.locator('.decision-history-list')).toContainText(decisionComment)
     await expect(page.getByText('AI-приоритет · Высокий', { exact: true })).toBeVisible()
 
@@ -78,11 +79,12 @@ test('real API demo: решение и lifecycle отражаются в дай�
     await expect(dialog).toBeHidden()
 
     const navigation = page.getByRole('navigation', { name: 'Основные разделы' })
-    await navigation.getByRole('link', { name: 'Кейс НПА' }).click()
+    await navigation.getByRole('link', { name: 'Кейсы НПА' }).click()
+    await page.getByRole('link', { name: caseTitle, exact: true }).click()
     await expect(page.getByRole('heading', { level: 1, name: caseTitle })).toBeVisible()
     await expect(page.locator('.stage-card')).toContainText('Текущая стадияПроект')
     await expect(page.getByText('Событий пока нет')).toBeVisible()
-    await expect(page.getByRole('link', { name: publicationTitle })).toBeVisible()
+    await expect(page.getByRole('link', { name: publicationTitle, exact: true })).toBeVisible()
 
     await page.getByLabel('Стадия').selectOption('draft')
     await page.getByLabel('Дата события').fill('2026-09-04T12:00')
@@ -108,7 +110,8 @@ test('real API demo: решение и lifecycle отражаются в дай�
     await expect(timeline.getByRole('link', { name: 'Официальное подтверждение' })).toHaveAttribute('href', confirmationUrl)
     await expect(page.locator('.stage-card')).toContainText('Текущая стадияПроект')
 
-    await navigation.getByRole('link', { name: 'Дайджест' }).click()
+    await navigation.getByRole('link', { name: /Отчёт/ }).click()
+    await page.getByRole('link', { name: 'Автоматическая сводка', exact: true }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Дайджест для руководителя' })).toBeVisible()
     await expect(page.getByText('all_available_data', { exact: true })).toBeVisible()
 

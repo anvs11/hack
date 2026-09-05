@@ -6,11 +6,13 @@ import { createTestRouter } from './router'
 
 describe('application routes', () => {
   it.each([
-    ['/feed', 'Лента сигналов'],
+    ['/feed', /Мониторинг/],
     ['/publications/pub-001', 'Проект требований к обработке данных вынесен на обсуждение'],
     ['/regulatory-cases/case-001', 'Демонстрационные требования к обработке данных'],
     ['/sources', 'Источники'],
-    ['/digest', 'Дайджест для руководителя'],
+    ['/digest', 'Отчёт для руководителя'],
+    ['/digest?tab=auto', 'Дайджест для руководителя'],
+    ['/regulatory-cases', 'Кейсы НПА'],
   ])('opens %s', async (path, heading) => {
     render(<RouterProvider router={createTestRouter(path)} />)
 

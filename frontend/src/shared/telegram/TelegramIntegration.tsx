@@ -27,6 +27,7 @@ export function TelegramIntegration() {
       if (!initData) {
         setSession({ status: 'rejected' })
         document.documentElement.dataset.telegramAuth = 'rejected'
+        delete document.documentElement.dataset.telegramUserId
         return clearTelegramSessionDocumentState
       }
 
@@ -35,6 +36,7 @@ export function TelegramIntegration() {
       document.documentElement.dataset.telegramAuth = 'checking'
       api.authenticateTelegram(initData, controller.signal).then(
         (result) => {
+          if (controller.signal.aborted) return
           setSession({ status: 'authenticated', user: result.user })
           document.documentElement.dataset.telegramAuth = 'authenticated'
           document.documentElement.dataset.telegramUserId = String(result.user.id)

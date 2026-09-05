@@ -61,7 +61,7 @@ describe('sources list states', () => {
     server.use(http.get('*/api/sources', () => HttpResponse.json([])))
     renderSources()
     expect(await screen.findByRole('heading', { name: 'Источников нет' })).toBeInTheDocument()
-    expect(screen.getByText('0')).toBeInTheDocument()
+    expect(document.querySelector('.metric-card')).toHaveTextContent('0активных')
   })
 
   it('shows a GET error as a page-level alert', async () => {

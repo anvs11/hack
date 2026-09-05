@@ -1,299 +1,457 @@
-import { useEffect, useRef, useState } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react'
+import { Link } from 'react-router-dom'
+import type { PublicationDetail } from './api/types'
+import {
+  categoryColors,
+  buildGraph,
+  project,
+  type GraphView,
+} from './signalGraph'
+import { useGraphControls } from './useGraphControls'
+import { formatDate, formatPriority } from './format'
+import { useReport } from './ReportStore'
 
-type Node = {
-  position: [number, number, number]
-  color: [number, number, number]
-  size: number
+// Retains the original lightweight WebGL point-sphere technique. Geometry is
+// publication-derived; the scene renders on demand, with no permanent RAF loop.
+const vertexShader = `attribute vec3 aPosition; attribute vec3 aColor; attribute float aSize;
+uniform float uRatio; varying vec3 vColor;
+void main(){gl_Position=vec4(aPosition.xy,0.0,1.0);gl_PointSize=aSize*uRatio;vColor=aColor;}`
+const fragmentShader = `precision mediump float; varying vec3 vColor;
+void main(){vec2 p=gl_PointCoord*2.0-1.0;float r=length(p);if(r>1.0)discard;
+float core=1.0-smoothstep(.12,.3,r);float glow=exp(-3.5*r)*.85*(1.0-r);
+vec3 color=mix(vColor,vec3(1.0),core*.78);
+gl_FragColor=vec4(color,max(core,glow));}`
+export type MapProps = {
+  sourceNames: Record<string, string>
+  items: PublicationDetail[]
+  highlighted: string | null
+  onHighlight: (id: string | null) => void
+  returnTo: string
+  paused: boolean
+  view: GraphView
+  setView: Dispatch<SetStateAction<GraphView>>
 }
-
-const vertexShader = `
-  attribute vec3 aPosition;
-  attribute vec3 aColor;
-  attribute float aSize;
-  uniform vec2 uRotation;
-  uniform float uAspect;
-  uniform float uScale;
-  varying vec3 vColor;
-
-  void main() {
-    float cy = cos(uRotation.x);
-    float sy = sin(uRotation.x);
-    float cx = cos(uRotation.y);
-    float sx = sin(uRotation.y);
-    vec3 p = aPosition;
-    p = vec3(cy * p.x + sy * p.z, p.y, -sy * p.x + cy * p.z);
-    p = vec3(p.x, cx * p.y - sx * p.z, sx * p.y + cx * p.z);
-    float depth = 4.6 - p.z;
-    gl_Position = vec4((p.x * uScale / depth) / uAspect, p.y * uScale / depth, 0.0, 1.0);
-    gl_PointSize = aSize * uScale / depth;
-    vColor = aColor;
-  }
-`
-
-const fragmentShader = `
-  precision mediump float;
-  uniform float uPoints;
-  varying vec3 vColor;
-
-  void main() {
-    if (uPoints > 0.5) {
-      vec2 point = gl_PointCoord - vec2(0.5);
-      float radius = length(point);
-      if (radius > 0.5) discard;
-      float sphere = sqrt(max(0.0, 1.0 - radius * radius * 4.0));
-      float light = 0.42 + sphere * 0.7 + point.x * -0.2;
-      gl_FragColor = vec4(vColor * light, 1.0);
-    } else {
-      gl_FragColor = vec4(vColor, 0.42);
-    }
-  }
-`
-
-function createShader(gl: WebGLRenderingContext, type: number, source: string) {
-  const shader = gl.createShader(type)
-  if (!shader) return null
-  gl.shaderSource(shader, source)
-  gl.compileShader(shader)
-  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    gl.deleteShader(shader)
-    return null
-  }
-  return shader
-}
-
-function makeNodes(compact: boolean) {
-  const total = compact ? 22 : 40
-  let seed = 9137
-  const random = () => {
-    seed = (seed * 16807) % 2147483647
-    return (seed - 1) / 2147483646
-  }
-
-  return Array.from({ length: total }, (_, index): Node => {
-    const angle = index * 2.399 + random() * 0.4
-    const radius = 0.45 + random() * 1.25
-    const color = index % 5 === 0
-      ? [0.08, 0.18, 0.95]
-      : index % 3 === 0
-        ? [0.92, 0.94, 1]
-        : [0.035, 0.04, 0.055]
-
-    return {
-      position: [
-        Math.cos(angle) * radius,
-        (random() - 0.5) * 2.2,
-        Math.sin(angle) * radius,
-      ],
-      color: color as [number, number, number],
-      size: 52 + random() * 70,
-    }
-  })
-}
-
-export default function HeroVisual() {
+export default function HeroVisual({
+  items,
+  sourceNames,
+  highlighted,
+  onHighlight,
+  returnTo,
+  paused,
+  view,
+  setView,
+}: MapProps) {
+  const stageRef = useRef<HTMLDivElement>(null)
+  const [aspect, setAspect] = useState(1)
+  const controls = useGraphControls(stageRef, paused, setView)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const frameRef = useRef<number | null>(null)
-  const pointerRef = useRef({ x: 0, y: 0 })
-  const scrollRef = useRef(0)
+  const drawRef = useRef<(() => void) | null>(null)
   const [fallback, setFallback] = useState(false)
-
+  const [edgeIndex, setEdgeIndex] = useState('')
+  const [inspectedId, setInspectedId] = useState<string | null>(null)
+  const report = useReport()
+  const [includeSources, setIncludeSources] = useState(true)
+  const graph = useMemo(
+    () => buildGraph(items, includeSources, sourceNames),
+    [items, includeSources, sourceNames],
+  )
+  const projected = graph.nodes
+    .map((n) => ({ ...n, ...project(n.position, view, aspect) }))
+    .sort((a, b) => b.depth - a.depth)
+  const sceneRef = useRef(projected)
+  sceneRef.current = projected
+  const pointById = new Map(projected.map((n) => [n.id, n]))
+  const selected = items.find(
+    (i) => i.publication.id === (highlighted ?? inspectedId),
+  )
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage) return
+    const measure = () => {
+      const r = stage.getBoundingClientRect()
+      if (r.height) setAspect(r.width / r.height)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(stage)
+    return () => observer.disconnect()
+  }, [])
+  useEffect(() => setEdgeIndex(''), [items, includeSources])
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-
-    if (typeof WebGLRenderingContext === 'undefined') {
-      setFallback(true)
-      return
+    let gl: WebGLRenderingContext | null = null
+    try {
+      if (typeof WebGLRenderingContext !== 'undefined')
+        gl = canvas.getContext('webgl', {
+          alpha: true,
+          antialias: true,
+          powerPreference: 'low-power',
+        })
+    } catch {
+      /* use 2D */
     }
-
-    const mediaMatches = (query: string) =>
-      typeof window.matchMedia === 'function' && window.matchMedia(query).matches
-    const reducedMotion = mediaMatches('(prefers-reduced-motion: reduce)')
-    const compact = mediaMatches('(max-width: 680px)')
-    const gl = canvas.getContext('webgl', {
-      alpha: false,
-      antialias: true,
-      powerPreference: compact ? 'low-power' : 'high-performance',
-    })
-
     if (!gl) {
       setFallback(true)
       return
     }
-
-    const vertex = createShader(gl, gl.VERTEX_SHADER, vertexShader)
-    const fragment = createShader(gl, gl.FRAGMENT_SHADER, fragmentShader)
-    const program = gl.createProgram()
-    if (!vertex || !fragment || !program) {
+    const ctx = gl
+    const shaders: WebGLShader[] = []
+    const buffers: WebGLBuffer[] = []
+    const program = ctx.createProgram()
+    const cleanup = () => {
+      buffers.forEach((b) => ctx.deleteBuffer(b))
+      shaders.forEach((s) => ctx.deleteShader(s))
+      if (program) ctx.deleteProgram(program)
+    }
+    try {
+      if (!program) throw new Error('No program')
+      for (const [type, source] of [
+        [ctx.VERTEX_SHADER, vertexShader],
+        [ctx.FRAGMENT_SHADER, fragmentShader],
+      ] as const) {
+        const shader = ctx.createShader(type)
+        if (!shader) throw new Error('No shader')
+        shaders.push(shader)
+        ctx.shaderSource(shader, source)
+        ctx.compileShader(shader)
+        if (!ctx.getShaderParameter(shader, ctx.COMPILE_STATUS))
+          throw new Error('Shader compilation failed')
+        ctx.attachShader(program, shader)
+      }
+      ctx.linkProgram(program)
+      if (!ctx.getProgramParameter(program, ctx.LINK_STATUS))
+        throw new Error('Link failed')
+      ctx.useProgram(program)
+      for (let i = 0; i < 3; i++) {
+        const buffer = ctx.createBuffer()
+        if (!buffer) throw new Error('No buffer')
+        buffers.push(buffer)
+      }
+    } catch {
+      cleanup()
       setFallback(true)
       return
     }
-
-    gl.attachShader(program, vertex)
-    gl.attachShader(program, fragment)
-    gl.linkProgram(program)
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      setFallback(true)
-      return
-    }
-
-    const nodes = makeNodes(compact)
-    const pointPositions = new Float32Array(nodes.flatMap((node) => node.position))
-    const pointColors = new Float32Array(nodes.flatMap((node) => node.color))
-    const pointSizes = new Float32Array(nodes.map((node) => node.size))
-    const linePositions: number[] = []
-    const lineColors: number[] = []
-
-    nodes.forEach((node, index) => {
-      nodes.slice(index + 1).forEach((other) => {
-        const distance = Math.hypot(
-          node.position[0] - other.position[0],
-          node.position[1] - other.position[1],
-          node.position[2] - other.position[2],
+    let visible = true
+    let lost = false
+    let frame: number | null = null
+    function draw() {
+      frame = null
+      if (!visible || document.hidden || lost || !program) return
+      const rect = canvas!.getBoundingClientRect()
+      const dpr = Math.min(
+        window.devicePixelRatio || 1,
+        rect.width < 500 ? 1.5 : 2,
+      )
+      canvas!.width = Math.max(1, Math.round(rect.width * dpr))
+      canvas!.height = Math.max(1, Math.round(rect.height * dpr))
+      ctx.viewport(0, 0, canvas!.width, canvas!.height)
+      ctx.clearColor(0, 0, 0, 0)
+      ctx.clear(ctx.COLOR_BUFFER_BIT)
+      ctx.useProgram(program)
+      ctx.enable(ctx.BLEND)
+      ctx.blendFunc(ctx.SRC_ALPHA, ctx.ONE)
+      const data = sceneRef.current
+      const values = [
+        data.flatMap((n) => [n.x, n.y, 0]),
+        data.flatMap((n) => {
+          const hex =
+            categoryColors[
+              n.detail.latest_analysis?.category ?? 'unknown'
+            ].slice(1)
+          return [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+        }),
+        data.map((n) => n.size),
+      ]
+      ;['aPosition', 'aColor', 'aSize'].forEach((name, i) => {
+        const location = ctx.getAttribLocation(program, name)
+        ctx.bindBuffer(ctx.ARRAY_BUFFER, buffers[i])
+        ctx.bufferData(
+          ctx.ARRAY_BUFFER,
+          new Float32Array(values[i]),
+          ctx.DYNAMIC_DRAW,
         )
-        if (distance < (compact ? 0.8 : 0.7)) {
-          linePositions.push(...node.position, ...other.position)
-          lineColors.push(0.25, 0.3, 0.6, 0.25, 0.3, 0.6)
-        }
+        ctx.enableVertexAttribArray(location)
+        ctx.vertexAttribPointer(
+          location,
+          i === 2 ? 1 : 3,
+          ctx.FLOAT,
+          false,
+          0,
+          0,
+        )
       })
-    })
-    const linePositionData = new Float32Array(linePositions)
-    const lineColorData = new Float32Array(lineColors)
-
-    const positionLocation = gl.getAttribLocation(program, 'aPosition')
-    const colorLocation = gl.getAttribLocation(program, 'aColor')
-    const sizeLocation = gl.getAttribLocation(program, 'aSize')
-    const rotationLocation = gl.getUniformLocation(program, 'uRotation')
-    const aspectLocation = gl.getUniformLocation(program, 'uAspect')
-    const scaleLocation = gl.getUniformLocation(program, 'uScale')
-    const pointsLocation = gl.getUniformLocation(program, 'uPoints')
-    const pointPositionBuffer = gl.createBuffer()
-    const pointColorBuffer = gl.createBuffer()
-    const pointSizeBuffer = gl.createBuffer()
-    const linePositionBuffer = gl.createBuffer()
-    const lineColorBuffer = gl.createBuffer()
-
-    const uploadAttribute = (buffer: WebGLBuffer | null, data: Float32Array) => {
-      gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
-      gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW)
+      ctx.uniform1f(ctx.getUniformLocation(program, 'uRatio'), dpr)
+      ctx.drawArrays(ctx.POINTS, 0, data.length)
     }
-    const bindAttribute = (buffer: WebGLBuffer | null, location: number, size: number) => {
-      gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
-      gl.enableVertexAttribArray(location)
-      gl.vertexAttribPointer(location, size, gl.FLOAT, false, 0, 0)
+    const schedule = () => {
+      if (frame === null && visible && !document.hidden && !lost)
+        frame = requestAnimationFrame(draw)
     }
-
-    gl.useProgram(program)
-    uploadAttribute(pointPositionBuffer, pointPositions)
-    uploadAttribute(pointColorBuffer, pointColors)
-    uploadAttribute(pointSizeBuffer, pointSizes)
-    uploadAttribute(linePositionBuffer, linePositionData)
-    uploadAttribute(lineColorBuffer, lineColorData)
-    gl.enable(gl.BLEND)
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
-    gl.clearColor(0.055, 0.06, 0.082, 1)
-
-    let rotationX = -0.35
-    let rotationY = 0.12
-    let visible = !document.hidden
-
-    const resize = () => {
-      const rect = canvas.getBoundingClientRect()
-      const ratio = Math.min(window.devicePixelRatio || 1, compact ? 1.5 : 2)
-      const width = Math.max(1, Math.round(rect.width * ratio))
-      const height = Math.max(1, Math.round(rect.height * ratio))
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width
-        canvas.height = height
-        gl.viewport(0, 0, width, height)
-      }
+    drawRef.current = schedule
+    const resize =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(schedule)
+        : null
+    resize?.observe(canvas)
+    const observer =
+      typeof IntersectionObserver !== 'undefined'
+        ? new IntersectionObserver(([entry]) => {
+            visible = entry.isIntersecting
+            if (visible) schedule()
+            else if (frame !== null) {
+              cancelAnimationFrame(frame)
+              frame = null
+            }
+          })
+        : null
+    observer?.observe(canvas)
+    const visibility = () => {
+      if (document.hidden && frame !== null) {
+        cancelAnimationFrame(frame)
+        frame = null
+      } else schedule()
     }
-
-    const draw = (time: number) => {
-      resize()
-      const targetX = pointerRef.current.x * 0.34 + scrollRef.current * 0.5
-      const targetY = pointerRef.current.y * 0.22 - scrollRef.current * 0.2
-      rotationX += (targetX - rotationX) * 0.035
-      rotationY += (targetY - rotationY) * 0.035
-      const drift = reducedMotion ? 0 : time * 0.00007
-
-      gl.clear(gl.COLOR_BUFFER_BIT)
-      gl.uniform2f(rotationLocation, rotationX + drift, rotationY)
-      gl.uniform1f(aspectLocation, canvas.width / canvas.height)
-      gl.uniform1f(scaleLocation, compact ? 4.4 : 5.2)
-
-      bindAttribute(linePositionBuffer, positionLocation, 3)
-      bindAttribute(lineColorBuffer, colorLocation, 3)
-      gl.disableVertexAttribArray(sizeLocation)
-      gl.vertexAttrib1f(sizeLocation, 1)
-      gl.uniform1f(pointsLocation, 0)
-      gl.drawArrays(gl.LINES, 0, linePositions.length / 3)
-
-      bindAttribute(pointPositionBuffer, positionLocation, 3)
-      bindAttribute(pointColorBuffer, colorLocation, 3)
-      bindAttribute(pointSizeBuffer, sizeLocation, 1)
-      gl.uniform1f(pointsLocation, 1)
-      gl.drawArrays(gl.POINTS, 0, nodes.length)
-
-      if (!reducedMotion && visible) frameRef.current = requestAnimationFrame(draw)
+    const contextLost = (event: Event) => {
+      event.preventDefault()
+      lost = true
+      if (frame !== null) cancelAnimationFrame(frame)
+      setFallback(true)
     }
-
-    const onPointerMove = (event: PointerEvent) => {
-      const rect = canvas.getBoundingClientRect()
-      pointerRef.current = {
-        x: ((event.clientX - rect.left) / rect.width - 0.5) * 2,
-        y: ((event.clientY - rect.top) / rect.height - 0.5) * 2,
-      }
-    }
-    const onPointerLeave = () => { pointerRef.current = { x: 0, y: 0 } }
-    const onScroll = () => {
-      const rect = canvas.getBoundingClientRect()
-      scrollRef.current = Math.max(-1, Math.min(1, -rect.top / Math.max(rect.height, 1)))
-    }
-    const onVisibilityChange = () => {
-      visible = !document.hidden
-      if (visible && !reducedMotion && frameRef.current === null) {
-        frameRef.current = requestAnimationFrame(draw)
-      }
-      if (!visible && frameRef.current !== null) {
-        cancelAnimationFrame(frameRef.current)
-        frameRef.current = null
-      }
-    }
-
-    canvas.addEventListener('pointermove', onPointerMove)
-    canvas.addEventListener('pointerleave', onPointerLeave)
-    window.addEventListener('scroll', onScroll, { passive: true })
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    draw(0)
-
+    canvas.addEventListener('webglcontextlost', contextLost)
+    document.addEventListener('visibilitychange', visibility)
+    window.addEventListener('resize', schedule)
+    schedule()
     return () => {
-      canvas.removeEventListener('pointermove', onPointerMove)
-      canvas.removeEventListener('pointerleave', onPointerLeave)
-      window.removeEventListener('scroll', onScroll)
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
-      gl.deleteProgram(program)
-      gl.deleteShader(vertex)
-      gl.deleteShader(fragment)
+      drawRef.current = null
+      if (frame !== null) cancelAnimationFrame(frame)
+      resize?.disconnect()
+      observer?.disconnect()
+      canvas.removeEventListener('webglcontextlost', contextLost)
+      document.removeEventListener('visibilitychange', visibility)
+      window.removeEventListener('resize', schedule)
+      cleanup()
     }
   }, [])
-
+  useEffect(() => {
+    drawRef.current?.()
+  }, [items, view, aspect])
+  const edge = graph.edges[Number(edgeIndex)]
   return (
-    <div className={`hero-visual ${fallback ? 'hero-visual-fallback' : ''}`}>
-      <canvas
-        ref={canvasRef}
-        aria-label="Абстрактная аналитическая сеть сигналов"
-        role="img"
-      />
-      <div className="visual-fallback" aria-hidden="true">
-        <i /><i /><i /><i /><i />
+    <div className={`map-scene ${paused ? 'map-paused' : ''}`}>
+      <div
+        ref={stageRef}
+        className={`signal-stage ${fallback ? 'map-fallback' : ''} ${controls.dragging ? 'is-dragging' : ''}`}
+        tabIndex={0}
+        role="group"
+        aria-label="Область 3D-карты"
+        aria-describedby="graph-gesture-help"
+        {...controls.handlers}
+      >
+        <svg
+          className="spatial-guides"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          {[0, 1, 2].map((axis) => (
+            <polyline
+              key={axis}
+              points={Array.from({ length: 65 }, (_, i) => {
+                const t = (i / 64) * Math.PI * 2
+                const circle: [number, number, number] =
+                  axis === 0
+                    ? [Math.cos(t) * 1.5, 0, Math.sin(t) * 1.5]
+                    : axis === 1
+                      ? [0, Math.cos(t) * 1.5, Math.sin(t) * 1.5]
+                      : [Math.cos(t) * 1.5, Math.sin(t) * 1.5, 0]
+                const p = project(circle, view, aspect)
+                return `${(p.x + 1) * 50},${(1 - p.y) * 50}`
+              }).join(' ')}
+            />
+          ))}
+        </svg>
+        <svg
+          className="graph-edges"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          {graph.edges.map((e, i) => {
+            const a = pointById.get(e.from)!
+            const b = pointById.get(e.to)!
+            return (
+              <line
+                key={`${e.from}-${e.to}`}
+                x1={(a.x + 1) * 50}
+                y1={(1 - a.y) * 50}
+                x2={(b.x + 1) * 50}
+                y2={(1 - b.y) * 50}
+                className={String(i) === edgeIndex ? 'selected-edge' : ''}
+              />
+            )
+          })}
+        </svg>
+        <canvas ref={canvasRef} aria-hidden="true" />
+        {projected.map((n) => {
+          const included = report.draft.items.some((i) => i.id === n.id)
+          const high = ['high', 'critical'].includes(
+            n.detail.latest_analysis?.proposed_priority ?? '',
+          )
+          return (
+            <Link
+              key={n.id}
+              to={`/publications/${encodeURIComponent(n.id)}`}
+              state={{ returnTo }}
+              aria-label={`На карте: ${n.detail.publication.title}`}
+              className={`map-node ${highlighted === n.id ? 'selected' : ''} ${high ? 'high-node' : ''}`}
+              style={
+                {
+                  left: `${(n.x + 1) * 50}%`,
+                  top: `${(1 - n.y) * 50}%`,
+                  width: Math.max(32, n.size),
+                  height: Math.max(32, n.size),
+                  '--node-size': `${n.size}px`,
+                  '--node-color':
+                    categoryColors[
+                      n.detail.latest_analysis?.category ?? 'unknown'
+                    ],
+                } as React.CSSProperties
+              }
+              onMouseEnter={() => {
+                onHighlight(n.id)
+                setInspectedId(n.id)
+              }}
+              onMouseLeave={() => onHighlight(null)}
+              onFocus={() => {
+                onHighlight(n.id)
+                setInspectedId(n.id)
+              }}
+              onBlur={() => onHighlight(null)}
+            >
+              <span className="node-sphere" aria-hidden="true" />
+              <span className="node-label" aria-hidden="true">
+                {n.detail.publication.title}
+              </span>
+              {included && (
+                <span className="node-check" aria-hidden="true">
+                  ✓
+                </span>
+              )}
+            </Link>
+          )
+        })}
+        <span className="map-mode">
+          {fallback
+            ? '2D-карта · WebGL недоступен'
+            : '3D · Пространство публикаций'}
+        </span>
       </div>
-      <div className="visual-caption" aria-hidden="true">
-        <span>Live signal map</span>
-        <span>05 / nodes online</span>
+      <label className="map-source-toggle">
+        <input
+          type="checkbox"
+          checked={includeSources}
+          onChange={(e) => setIncludeSources(e.target.checked)}
+        />
+        Связи по общему источнику
+      </label>
+      <p className="graph-gesture-help" id="graph-gesture-help">
+        Потяните — вращение · Колесо / щипок — масштаб <br />
+        Два пальца / Shift — перемещение · Двойное нажатие — сброс
+      </p>
+      <div className="map-inspector" aria-live="polite">
+        {selected ? (
+          <>
+            <strong>{selected.publication.title}</strong>
+            <span>
+              {formatDate(selected.publication.published_at)} · AI:{' '}
+              {formatPriority(
+                selected.latest_analysis?.proposed_priority ?? 'unknown',
+              )}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                document
+                  .getElementById(`publication-${selected.publication.id}`)
+                  ?.scrollIntoView({ block: 'center', behavior: 'instant' })
+                onHighlight(selected.publication.id)
+              }}
+            >
+              Показать карточку в ленте
+            </button>
+          </>
+        ) : (
+          <>
+            <strong>
+              {items.length
+                ? 'Исследуйте публикации'
+                : 'Нет публикаций для карты'}
+            </strong>
+            <span>
+              Нажмите на узел для анализа. Стрелки и + / − тоже управляют
+              картой.
+            </span>
+          </>
+        )}
       </div>
-      <div className="cursor-orbit" aria-hidden="true">+</div>
+      {graph.edges.length > 0 ? (
+        <div className="edge-inspector">
+          <label>
+            Основания связей
+            <select
+              value={edgeIndex}
+              onChange={(e) => setEdgeIndex(e.target.value)}
+            >
+              <option value="">Выберите связь ({graph.edges.length})</option>
+              {graph.edges.map((e, i) => (
+                <option key={i} value={i}>
+                  {pointById.get(e.from)!.detail.publication.title} ↔{' '}
+                  {pointById.get(e.to)!.detail.publication.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          {edgeIndex && edge && (
+            <p>
+              {edge.reasons.join('. ')}. Общий источник или совпадение не
+              доказывают тематическую или причинную связь или дубликат.
+            </p>
+          )}
+        </div>
+      ) : (
+        <p className="map-footnote">
+          Общих оснований нет — новости показаны отдельно.
+        </p>
+      )}
+      <details className="map-news-list">
+        <summary>Список новостей на карте</summary>
+        <ol>
+          {graph.nodes.map((n) => (
+            <li key={n.id}>
+              <Link
+                to={`/publications/${encodeURIComponent(n.id)}`}
+                state={{ returnTo }}
+                onFocus={() => {
+                  onHighlight(n.id)
+                  setInspectedId(n.id)
+                }}
+                onBlur={() => onHighlight(null)}
+              >
+                {n.detail.publication.title}
+              </Link>
+            </li>
+          ))}
+        </ol>
+      </details>
     </div>
   )
 }

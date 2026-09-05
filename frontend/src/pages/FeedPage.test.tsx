@@ -6,6 +6,7 @@ import { createTestRouter } from '../app/router'
 import { publicationDetails } from '../mocks/fixtures'
 import { api } from '../shared/api/client'
 import type { PublicationList } from '../shared/api/types'
+import { dateBoundary } from '../shared/feedQuery'
 import { formatDate } from '../shared/format'
 import { server } from '../test/setup'
 
@@ -35,7 +36,7 @@ describe('analyst feed', () => {
     expect(cardQueries.getByText(formatDate('2026-09-01T09:15:00Z'))).toBeInTheDocument()
     expect(cardQueries.getByText('Категория · Регуляторика')).toBeInTheDocument()
     expect(cardQueries.getByText('AI-приоритет · Средний')).toBeInTheDocument()
-    expect(cardQueries.getByText('Требует проверки')).toBeInTheDocument()
+    expect(cardQueries.getByText('AI требует проверки')).toBeInTheDocument()
 
     const originalLink = cardQueries.getByRole('link', { name: 'Открыть оригинал' })
     expect(originalLink).toHaveAttribute(
@@ -46,7 +47,7 @@ describe('analyst feed', () => {
     expect(originalLink).toHaveAttribute('rel', 'noreferrer')
   })
 
-  it('sorts critical and high priorities before medium and low deterministically', async () => {
+  it('preserves the exact API order without re-sorting one page', async () => {
     const priorities = {
       'pub-001': 'high',
       'pub-004': 'low',
@@ -81,13 +82,7 @@ describe('analyst feed', () => {
       within(card).getByRole('heading', { level: 2 }).textContent?.replace('↗', '').trim(),
     )
 
-    expect(titles).toEqual([
-      'В отраслевом канале обсуждают возможное изменение требований',
-      'Проект требований к обработке данных вынесен на обсуждение',
-      'Конкурент представил платформу аналитики',
-      'Компания опровергла сообщение о сбое сервиса',
-      'Рынок облачных сервисов показал рост',
-    ])
+    expect(titles).toEqual(unsortedItems.map(i => i.publication.title))
   })
 
   it('restores search and all filters from the URL', async () => {
@@ -100,8 +95,8 @@ describe('analyst feed', () => {
     expect(screen.getByLabelText('Тип источника')).toHaveValue('rss')
     expect(screen.getByLabelText('Категория')).toHaveValue('trend')
     expect(screen.getByLabelText('AI-приоритет')).toHaveValue('medium')
-    expect(screen.getByLabelText('Статус проверки')).toHaveValue('false')
-    expect(screen.getByText('Активно: 5')).toBeInTheDocument()
+    expect(screen.getByLabelText('Флаг проверки AI')).toHaveValue('false')
+    expect(screen.getByText('Активно: 6')).toBeInTheDocument()
     expect(router.state.location.search).toContain('q=')
     expect(
       await screen.findByRole('link', { name: 'Рынок облачных сервисов показал рост' }),
@@ -141,7 +136,7 @@ describe('analyst feed', () => {
     fireEvent.change(screen.getByLabelText('Тип источника'), { target: { value: 'rss' } })
     fireEvent.change(screen.getByLabelText('Категория'), { target: { value: 'trend' } })
     fireEvent.change(screen.getByLabelText('AI-приоритет'), { target: { value: 'medium' } })
-    fireEvent.change(screen.getByLabelText('Статус проверки'), { target: { value: 'false' } })
+    fireEvent.change(screen.getByLabelText('Флаг проверки AI'), { target: { value: 'false' } })
 
     await waitFor(() => expect(screen.getByText('Активно: 4')).toBeInTheDocument())
     expect(router.state.location.search).toContain('source_type=rss')
@@ -167,10 +162,10 @@ describe('analyst feed', () => {
     fireEvent.change(screen.getByLabelText('Дата по'), { target: { value: '2026-09-02' } })
 
     await waitFor(() => expect(router.state.location.search).toContain(
-      'published_from=2026-09-02T00%3A00%3A00.000Z',
+      'published_from=' + encodeURIComponent(dateBoundary('2026-09-02')),
     ))
     expect(router.state.location.search).toContain(
-      'published_to=2026-09-02T23%3A59%3A59.999Z',
+      'published_to=' + encodeURIComponent(dateBoundary('2026-09-02', true)),
     )
     expect(screen.getByText('Активно: 2')).toBeInTheDocument()
   })

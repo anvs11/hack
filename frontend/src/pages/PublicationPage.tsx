@@ -1,10 +1,5 @@
-import {
-  type FormEvent,
-  useEffect,
-  useRef,
-  useState,
-} from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { type FormEvent, useEffect, useRef, useState } from 'react'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import { ApiError, api } from '../shared/api/client'
 import type {
   AnalysisVersion,
@@ -23,6 +18,8 @@ import { formatCategory, formatDate, formatPriority } from '../shared/format'
 import { PageState } from '../shared/PageState'
 import { RevealText } from '../shared/RevealText'
 import { getCurrentActorId } from '../shared/telegram/adapter'
+import { ReportButton, useReport } from '../shared/ReportStore'
+import { snapshotChanged } from '../shared/report'
 
 const categories: Category[] = [
   'regulation',
@@ -36,12 +33,14 @@ const importanceCriteria = [
   {
     key: 'business_relevance',
     label: 'Релевантность бизнесу',
-    description: 'Насколько событие прямо влияет на компанию, продукты или клиентов.',
+    description:
+      'Насколько событие прямо влияет на компанию, продукты или клиентов.',
   },
   {
     key: 'event_maturity',
     label: 'Зрелость события',
-    description: 'От неподтверждённого сигнала до принятого решения или случившегося события.',
+    description:
+      'От неподтверждённого сигнала до принятого решения или случившегося события.',
   },
   {
     key: 'financial_impact',
@@ -68,17 +67,20 @@ const hardSignals = [
   {
     key: 'state_support_or_accreditation_change',
     label: 'Господдержка или аккредитация',
-    description: 'Меняются льготы, меры господдержки или условия ИТ-аккредитации.',
+    description:
+      'Меняются льготы, меры господдержки или условия ИТ-аккредитации.',
   },
   {
     key: 'service_or_legal_blocking_risk',
     label: 'Блокирующий правовой риск',
-    description: 'Есть риск запрета, блокировки сервиса или уголовной ответственности.',
+    description:
+      'Есть риск запрета, блокировки сервиса или уголовной ответственности.',
   },
   {
     key: 'strategic_technology_status',
     label: 'Стратегический статус технологии',
-    description: 'ИИ, данные, ЦОД или ПО получают стратегически значимый статус.',
+    description:
+      'ИИ, данные, ЦОД или ПО получают стратегически значимый статус.',
   },
   {
     key: 'binding_legal_precedent',
@@ -91,6 +93,7 @@ type PageData = {
   detail: PublicationDetail
   history: PublicationHistory
   sources: Source[]
+  warnings?: string[]
 }
 
 type LoadState =
@@ -100,6 +103,16 @@ type LoadState =
 
 export function PublicationPage() {
   const { id = '' } = useParams()
+  const location = useLocation()
+  const report = useReport()
+  const routeId = useRef(id)
+  routeId.current = id
+  const candidateReturn: unknown = location.state?.returnTo
+  const returnTo =
+    typeof candidateReturn === 'string' &&
+    (/^\/feed(?:\?|$)/.test(candidateReturn) || candidateReturn === '/digest')
+      ? candidateReturn
+      : '/feed'
   const [state, setState] = useState<LoadState>({
     status: 'loading',
     data: null,
@@ -115,15 +128,49 @@ export function PublicationPage() {
     setSelectedAnalysisId('')
     setActionStatus('')
 
-    Promise.all([
+    Promise.allSettled([
       api.getPublication(id, controller.signal),
       api.getPublicationHistory(id, controller.signal),
       api.listSources(controller.signal),
     ]).then(
-      ([detail, history, sources]) => {
+      ([detailResult, historyResult, sourcesResult]) => {
+        if (controller.signal.aborted) return
+        if (detailResult.status === 'rejected') {
+          setState({
+            status: 'error',
+            data: null,
+            error:
+              detailResult.reason instanceof Error
+                ? detailResult.reason
+                : new Error('Не удалось загрузить материал'),
+          })
+          return
+        }
+        const detail = detailResult.value
         setState({
           status: 'success',
-          data: { detail, history, sources },
+          data: {
+            detail,
+            history:
+              historyResult.status === 'fulfilled'
+                ? historyResult.value
+                : {
+                    publication_id: id,
+                    revisions: [],
+                    analyses: [],
+                    decisions: [],
+                  },
+            sources:
+              sourcesResult.status === 'fulfilled' ? sourcesResult.value : [],
+            warnings: [
+              historyResult.status === 'rejected'
+                ? 'История недоступна. Показан текущий анализ.'
+                : '',
+              sourcesResult.status === 'rejected'
+                ? 'Список источников недоступен. Показан ID источника.'
+                : '',
+            ].filter(Boolean),
+          },
           error: null,
         })
       },
@@ -132,7 +179,8 @@ export function PublicationPage() {
           setState({
             status: 'error',
             data: null,
-            error: error instanceof Error ? error : new Error('Неизвестная ошибка'),
+            error:
+              error instanceof Error ? error : new Error('Неизвестная ошибка'),
           })
         }
       },
@@ -142,26 +190,42 @@ export function PublicationPage() {
   }, [id])
 
   if (state.status === 'loading') {
-    return <PageState kind="loading" title="Открываем публикацию" message={`ID: ${id}`} />
+    return (
+      <PageState
+        kind="loading"
+        title="Открываем публикацию"
+        message={`ID: ${id}`}
+      />
+    )
   }
 
   if (state.status === 'error') {
-    return <PageState kind="error" title="Публикация не загрузилась" message={state.error.message} />
+    return (
+      <PageState
+        kind="error"
+        title="Публикация не загрузилась"
+        message={state.error.message}
+      />
+    )
   }
 
   const { detail, history, sources } = state.data
   const { publication, latest_decision: latestDecision } = detail
-  const latestAnalysis = history.analyses.at(-1) ?? detail.latest_analysis
-  const selectedAnalysis = history.analyses.find(
-    (item) => item.id === selectedAnalysisId,
-  ) ?? latestAnalysis
+  const latestAnalysis = detail.latest_analysis
+  const selectedAnalysis =
+    history.analyses.find((item) => item.id === selectedAnalysisId) ??
+    latestAnalysis
   const source = sources.find((item) => item.id === publication.source_id)
+  const savedItem = report.draft.items.find(
+    (item) => item.id === publication.id,
+  )
 
   async function refreshAfterDecision(_decision: SpecialistDecision) {
     const [nextDetail, nextHistory] = await Promise.all([
       api.getPublication(id),
       api.getPublicationHistory(id),
     ])
+    if (routeId.current !== id) return
     setState({
       status: 'success',
       data: { detail: nextDetail, history: nextHistory, sources },
@@ -175,6 +239,7 @@ export function PublicationPage() {
       api.getPublication(id),
       api.getPublicationHistory(id),
     ])
+    if (routeId.current !== id) return
     setState({
       status: 'success',
       data: { detail: nextDetail, history: nextHistory, sources },
@@ -194,6 +259,7 @@ export function PublicationPage() {
         api.getPublication(id),
         api.getPublicationHistory(id),
       ])
+      if (routeId.current !== id) return
       setState({
         status: 'success',
         data: { detail: nextDetail, history: nextHistory, sources },
@@ -205,7 +271,7 @@ export function PublicationPage() {
       if (error instanceof ApiError && error.code === 'analyzer_unavailable') {
         setActionStatus(
           'AI-анализ пока недоступен: на сервере не подключён быстрый inference. ' +
-          'Публикация сохранена, данные не потеряны.',
+            'Публикация сохранена, данные не потеряны.',
         )
       } else {
         setActionStatus(
@@ -221,30 +287,70 @@ export function PublicationPage() {
 
   return (
     <article className="detail-page publication-workspace">
-      <Link className="back-link" to="/feed"><span aria-hidden="true">←</span> Вернуться в ленту</Link>
+      <Link className="back-link" to={returnTo}>
+        <span aria-hidden="true">←</span>{' '}
+        {returnTo === '/digest'
+          ? 'Вернуться в отчёт'
+          : 'Вернуться к результатам'}
+      </Link>
       <header className="detail-heading">
         <div className="card-meta">
           <span>{source?.name ?? publication.source_id}</span>
           <span>{formatDate(publication.published_at)}</span>
         </div>
         <RevealText lines={[publication.title]} />
-        <a className="source-link" href={publication.original_url} target="_blank" rel="noreferrer">
-          Открыть первоисточник ↗
-        </a>
+        <div className="detail-header-actions">
+          <a
+            className="source-link"
+            href={publication.original_url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Открыть первоисточник ↗
+          </a>
+          <ReportButton detail={detail} source={source} />
+        </div>
         {publication.tags.length > 0 && (
           <div className="tag-row">
-            {publication.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}
+            {publication.tags.map((tag) => (
+              <span className="tag" key={tag}>
+                {tag}
+              </span>
+            ))}
           </div>
         )}
       </header>
 
-      {actionStatus && <p className="action-message" role="status">{actionStatus}</p>}
+      {state.data.warnings?.map((warning) => (
+        <p className="inline-warning" role="alert" key={warning}>
+          {warning}
+        </p>
+      ))}
+      {savedItem && snapshotChanged(savedItem, detail) && (
+        <div className="snapshot-notice">
+          В отчёте сохранена предыдущая версия материала. Комментарий останется
+          при обновлении.
+          <button
+            onClick={() => report.refresh(publication.id, detail, source)}
+          >
+            Обновить снимок в отчёте
+          </button>
+        </div>
+      )}
+      {actionStatus && (
+        <p className="action-message" role="status">
+          {actionStatus}
+        </p>
+      )}
 
-      <PublicationMetadataEditor
-        key={publication.latest_revision_id ?? publication.id}
-        publication={publication}
-        onSaved={refreshAfterMetadata}
-      />
+      <details className="metadata-disclosure">
+        <summary>Управление публикацией</summary>
+        <PublicationMetadataEditor
+          key={publication.latest_revision_id ?? publication.id}
+          publication={publication}
+          onSaved={refreshAfterMetadata}
+        />
+      </details>
 
       <section className="analysis-launch" aria-label="Запуск AI-анализа">
         <div>
@@ -259,13 +365,24 @@ export function PublicationPage() {
         >
           {analysisBusy
             ? 'Анализируем…'
-            : latestAnalysis ? 'Повторить AI-анализ' : 'Запустить AI-анализ'}
+            : latestAnalysis
+              ? 'Повторить AI-анализ'
+              : 'Запустить AI-анализ'}
         </button>
       </section>
 
+      {selectedAnalysis && selectedAnalysis.id !== latestAnalysis?.id && (
+        <p className="snapshot-notice">
+          Открыта предыдущая версия AI v{selectedAnalysis.version}. Кнопка «В
+          отчёт» сохраняет текущий анализ
+          {latestAnalysis ? ` v${latestAnalysis.version}` : ''}.
+        </p>
+      )}
       <div className="detail-grid">
         <section className="content-panel">
-          <div className="panel-index" aria-hidden="true">01</div>
+          <div className="panel-index" aria-hidden="true">
+            01
+          </div>
           <p className="eyebrow">Исходный материал</p>
           <h2>Содержание</h2>
           <p className="publication-content">{publication.content}</p>
@@ -274,33 +391,59 @@ export function PublicationPage() {
         {selectedAnalysis ? (
           <AnalysisDetails analysis={selectedAnalysis} />
         ) : (
-          <PageState kind="empty" title="AI-анализа нет" message="Для этой публикации ещё нет версии анализа." />
+          <PageState
+            kind="empty"
+            title="AI-анализа нет"
+            message="Для этой публикации ещё нет версии анализа."
+          />
         )}
       </div>
 
-      {latestDecision && <LatestDecision decision={latestDecision} />}
-
-      <section className="history-section" aria-labelledby="history-heading">
-        <div className="section-heading compact-heading">
-          <div>
-            <p className="eyebrow">Аудит версий</p>
-            <h2 id="history-heading">История анализа и решений</h2>
-          </div>
-          <span className="history-count">
-            {history.revisions.length} правок · {history.analyses.length} AI · {history.decisions.length} решений
-          </span>
-        </div>
-        <History
-          history={history}
-          selectedAnalysisId={selectedAnalysis?.id ?? ''}
-          onSelectAnalysis={(analysisId) => {
-            setSelectedAnalysisId(analysisId)
-            setActionStatus('')
-          }}
+      {latestDecision ? (
+        <LatestDecision
+          decision={latestDecision}
+          current={latestDecision.analysis_id === latestAnalysis?.id}
         />
-      </section>
+      ) : (
+        <div className="latest-decision">
+          <div>
+            <p className="eyebrow">Решение специалиста</p>
+            <h2>Решение ещё не принято</h2>
+            <p>Предложение AI ожидает решения человека.</p>
+          </div>
+        </div>
+      )}
 
-      <section className="specialist-section" aria-labelledby="decision-heading">
+      <details className="history-disclosure">
+        <summary>
+          История анализа и решений · {history.analyses.length} AI ·{' '}
+          {history.decisions.length} решений
+        </summary>
+        <section className="history-section" aria-labelledby="history-heading">
+          <div className="section-heading compact-heading">
+            <div>
+              <p className="eyebrow">Аудит версий</p>
+              <h2 id="history-heading">История анализа и решений</h2>
+            </div>
+            <span className="history-count">
+              {history.revisions.length} правок · {history.analyses.length} AI ·{' '}
+              {history.decisions.length} решений
+            </span>
+          </div>
+          <History
+            history={history}
+            selectedAnalysisId={selectedAnalysis?.id ?? ''}
+            onSelectAnalysis={(analysisId) => {
+              setSelectedAnalysisId(analysisId)
+              setActionStatus('')
+            }}
+          />
+        </section>
+      </details>
+      <section
+        className="specialist-section"
+        aria-labelledby="decision-heading"
+      >
         <div className="section-heading compact-heading">
           <div>
             <p className="eyebrow">Решение человека</p>
@@ -327,23 +470,48 @@ export function PublicationPage() {
 
 function AnalysisDetails({ analysis }: { analysis: AnalysisVersion }) {
   return (
-    <section className="analysis-panel full-analysis" aria-labelledby="analysis-heading">
-      <div className="panel-index" aria-hidden="true">02</div>
+    <section
+      className="analysis-panel full-analysis"
+      aria-labelledby="analysis-heading"
+    >
+      <div className="panel-index" aria-hidden="true">
+        02
+      </div>
       <p className="eyebrow">AI-анализ · v{analysis.version}</p>
       <h2 id="analysis-heading">Выбранная версия</h2>
-      <dl className="analysis-meta">
-        <div><dt>Анализатор</dt><dd>{analysis.analyzer}</dd></div>
-        <div><dt>Модель</dt><dd>{analysis.model}</dd></div>
-        <div><dt>Prompt</dt><dd>{analysis.prompt_version}</dd></div>
-        <div><dt>Создано</dt><dd>{formatDate(analysis.created_at)}</dd></div>
-      </dl>
+      <p className="preview-version">
+        Создано {formatDate(analysis.created_at)}
+      </p>
+      <details className="analysis-technical">
+        <summary>Версия и технические сведения</summary>
+        <dl className="analysis-meta">
+          <div>
+            <dt>Анализатор</dt>
+            <dd>{analysis.analyzer}</dd>
+          </div>
+          <div>
+            <dt>Модель</dt>
+            <dd>{analysis.model}</dd>
+          </div>
+          <div>
+            <dt>Prompt</dt>
+            <dd>{analysis.prompt_version}</dd>
+          </div>
+          <div>
+            <dt>Создано</dt>
+            <dd>{formatDate(analysis.created_at)}</dd>
+          </div>
+        </dl>
+      </details>
 
       <div className="analysis-copy-block">
         <h3>AI-саммари</h3>
         <p>{analysis.summary}</p>
       </div>
       <div className="tag-row analysis-tags">
-        <span className="tag">Категория · {formatCategory(analysis.category)}</span>
+        <span className="tag">
+          Категория · {formatCategory(analysis.category)}
+        </span>
         <span className={`priority priority-${analysis.proposed_priority}`}>
           AI-приоритет · {formatPriority(analysis.proposed_priority)}
         </span>
@@ -351,27 +519,46 @@ function AnalysisDetails({ analysis }: { analysis: AnalysisVersion }) {
       <dl className="analysis-stats">
         <div>
           <dt>Индекс важности</dt>
-          <dd>{analysis.importance_score === null
-            ? 'Не рассчитан'
-            : `${analysis.importance_score} из 18`}</dd>
+          <dd>
+            {analysis.importance_score === null
+              ? 'Не рассчитан'
+              : `${analysis.importance_score} из 18`}
+          </dd>
         </div>
-        <div><dt>Неопределённость</dt><dd>{Math.round(analysis.uncertainty * 100)}%</dd></div>
-        <div><dt>Проверка</dt><dd>{analysis.needs_review ? 'Нужна' : 'Не нужна'}</dd></div>
+        <div>
+          <dt>Неопределённость</dt>
+          <dd>{Math.round(analysis.uncertainty * 100)}%</dd>
+        </div>
+        <div>
+          <dt>Флаг AI</dt>
+          <dd>
+            {analysis.needs_review
+              ? 'Требует проверки'
+              : 'Не запрашивает проверку'}
+          </dd>
+        </div>
       </dl>
 
       <div className="analysis-columns">
-        <AnalysisList title="Факты" values={analysis.facts} empty="Факты не извлечены" />
+        <AnalysisList
+          title="Факты"
+          values={analysis.facts}
+          empty="Факты не извлечены"
+        />
         <section>
           <h3>Сущности</h3>
           {analysis.entities.length ? (
             <ul className="analysis-list entity-list">
               {analysis.entities.map((entity, index) => (
                 <li key={`${entity.type}-${entity.value}-${index}`}>
-                  <span>{entity.type}</span><strong>{entity.value}</strong>
+                  <span>{entity.type}</span>
+                  <strong>{entity.value}</strong>
                 </li>
               ))}
             </ul>
-          ) : <p className="explicit-empty">Сущности не извлечены</p>}
+          ) : (
+            <p className="explicit-empty">Сущности не извлечены</p>
+          )}
         </section>
       </div>
 
@@ -385,9 +572,11 @@ function AnalysisDetails({ analysis }: { analysis: AnalysisVersion }) {
           {importanceCriteria.map(({ key, label, description }) => (
             <div key={key}>
               <dt>{label}</dt>
-              <dd>{analysis.criteria[key] === null
-                ? 'Нет данных'
-                : `${analysis.criteria[key]} / 3`}</dd>
+              <dd>
+                {analysis.criteria[key] === null
+                  ? 'Нет данных'
+                  : `${analysis.criteria[key]} / 3`}
+              </dd>
               <p>{description}</p>
             </div>
           ))}
@@ -415,37 +604,91 @@ function AnalysisDetails({ analysis }: { analysis: AnalysisVersion }) {
               </li>
             ))}
           </ol>
-        ) : <p className="explicit-empty">Доказательства не извлечены</p>}
+        ) : (
+          <p className="explicit-empty">Доказательства не извлечены</p>
+        )}
       </section>
     </section>
   )
 }
 
-function AnalysisList({ title, values, empty }: { title: string; values: string[]; empty: string }) {
+function AnalysisList({
+  title,
+  values,
+  empty,
+}: {
+  title: string
+  values: string[]
+  empty: string
+}) {
   return (
     <section>
       <h3>{title}</h3>
       {values.length ? (
-        <ul className="analysis-list">{values.map((value, index) => <li key={`${value}-${index}`}>{value}</li>)}</ul>
-      ) : <p className="explicit-empty">{empty}</p>}
+        <ul className="analysis-list">
+          {values.map((value, index) => (
+            <li key={`${value}-${index}`}>{value}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="explicit-empty">{empty}</p>
+      )}
     </section>
   )
 }
 
-function LatestDecision({ decision }: { decision: SpecialistDecision }) {
+function LatestDecision({
+  decision,
+  current,
+}: {
+  decision: SpecialistDecision
+  current: boolean
+}) {
   return (
-    <section className="latest-decision" aria-labelledby="latest-decision-heading">
+    <section
+      className={`latest-decision ${current ? '' : 'stale-decision'}`}
+      aria-labelledby="latest-decision-heading"
+    >
       <div>
-        <p className="eyebrow">Финальное решение специалиста · v{decision.version}</p>
-        <h2 id="latest-decision-heading">{formatDecisionStatus(decision.status)}</h2>
-        <p>{decision.final_summary ?? 'Саммари AI подтверждено без исправлений.'}</p>
+        <p className="eyebrow">
+          {current
+            ? 'Решение по текущему анализу'
+            : 'Решение относится к предыдущей версии анализа'}{' '}
+          · v{decision.version}
+        </p>
+        <h2 id="latest-decision-heading">
+          {formatDecisionStatus(decision.status)}
+        </h2>
+        <p>
+          {decision.final_summary ??
+            (decision.status === 'confirmed'
+              ? 'Саммари AI подтверждено без исправлений.'
+              : 'Отдельное саммари специалиста не указано.')}
+        </p>
       </div>
       <dl className="decision-summary">
-        <div><dt>Категория</dt><dd>{formatCategory(decision.final_category)}</dd></div>
-        <div><dt>Финальный приоритет</dt><dd>{formatPriority(decision.final_priority)}</dd></div>
-        <div><dt>Автор</dt><dd>{decision.author_id}</dd></div>
-        <div><dt>Дата</dt><dd>{formatDate(decision.created_at)}</dd></div>
-        <div className="decision-comment"><dt>Комментарий</dt><dd>{decision.comment ?? 'Нет комментария'}</dd></div>
+        <div>
+          <dt>Категория</dt>
+          <dd>{formatCategory(decision.final_category)}</dd>
+        </div>
+        <div>
+          <dt>
+            {current ? 'Финальный приоритет' : 'Приоритет предыдущего решения'}
+          </dt>
+          <dd>{formatPriority(decision.final_priority)}</dd>
+        </div>
+        <div>
+          <dt>Автор</dt>
+          <dd>{decision.author_id}</dd>
+        </div>
+        <div>
+          <dt>Дата</dt>
+          <dd>{formatDate(decision.created_at)}</dd>
+        </div>
+        <div className="decision-comment">
+          <dt>Комментарий</dt>
+          <dd>{decision.comment ?? 'Нет комментария'}</dd>
+        </div>
       </dl>
     </section>
   )
@@ -474,17 +717,26 @@ function History({
                   aria-pressed={analysis.id === selectedAnalysisId}
                   onClick={() => onSelectAnalysis(analysis.id)}
                 >
-                  <span>v{analysis.version} · {formatDate(analysis.created_at)}</span>
-                  <strong>{analysis.analyzer} / {analysis.model}</strong>
+                  <span>
+                    v{analysis.version} · {formatDate(analysis.created_at)}
+                  </span>
+                  <strong>
+                    {analysis.analyzer} / {analysis.model}
+                  </strong>
                   <small>{analysis.summary}</small>
                   <small>
-                    {formatCategory(analysis.category)} · AI-{formatPriority(analysis.proposed_priority)}
+                    {formatCategory(analysis.category)} · AI-
+                    {formatPriority(analysis.proposed_priority)}
                   </small>
                 </button>
               </li>
             ))}
           </ol>
-        ) : <p className="inline-empty" role="status">Версий анализа нет.</p>}
+        ) : (
+          <p className="inline-empty" role="status">
+            Версий анализа нет.
+          </p>
+        )}
       </section>
       <section aria-labelledby="decision-history-heading">
         <h3 id="decision-history-heading">Решения специалиста</h3>
@@ -492,17 +744,25 @@ function History({
           <ol className="decision-history-list">
             {history.decisions.map((decision) => (
               <li key={decision.id}>
-                <span>v{decision.version} · {formatDate(decision.created_at)}</span>
+                <span>
+                  v{decision.version} · {formatDate(decision.created_at)}
+                </span>
                 <strong>{formatDecisionStatus(decision.status)}</strong>
                 <p>Автор: {decision.author_id}</p>
                 <p>Саммари: {decision.final_summary ?? 'без исправлений'}</p>
                 <p>Категория: {formatCategory(decision.final_category)}</p>
-                <p>Финальный приоритет: {formatPriority(decision.final_priority)}</p>
+                <p>
+                  Финальный приоритет: {formatPriority(decision.final_priority)}
+                </p>
                 <p>Комментарий: {decision.comment ?? 'нет'}</p>
               </li>
             ))}
           </ol>
-        ) : <p className="inline-empty" role="status">Решений специалиста ещё нет.</p>}
+        ) : (
+          <p className="inline-empty" role="status">
+            Решений специалиста ещё нет.
+          </p>
+        )}
       </section>
       <section aria-labelledby="revision-history-heading">
         <h3 id="revision-history-heading">Правки карточки</h3>
@@ -510,7 +770,9 @@ function History({
           <ol className="decision-history-list">
             {history.revisions.map((revision) => (
               <li key={revision.id}>
-                <span>v{revision.version} · {formatDate(revision.created_at)}</span>
+                <span>
+                  v{revision.version} · {formatDate(revision.created_at)}
+                </span>
                 <strong>{revision.title}</strong>
                 <p>Автор: {revision.author_id}</p>
                 <p>Теги: {revision.tags.join(', ') || 'нет'}</p>
@@ -518,7 +780,9 @@ function History({
               </li>
             ))}
           </ol>
-        ) : <p className="inline-empty">Правок карточки ещё нет.</p>}
+        ) : (
+          <p className="inline-empty">Правок карточки ещё нет.</p>
+        )}
       </section>
     </div>
   )
@@ -537,7 +801,10 @@ function PublicationMetadataEditor({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  async function save(patch: Omit<PublicationPatch, 'author_id'>, message: string) {
+  async function save(
+    patch: Omit<PublicationPatch, 'author_id'>,
+    message: string,
+  ) {
     if (isSubmitting) return
     setIsSubmitting(true)
     setError('')
@@ -549,7 +816,11 @@ function PublicationMetadataEditor({
       setIsEditing(false)
       await onSaved(message)
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Не удалось изменить публикацию')
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'Не удалось изменить публикацию',
+      )
     } finally {
       setIsSubmitting(false)
     }
@@ -557,9 +828,14 @@ function PublicationMetadataEditor({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const normalizedTags = [...new Set(
-      tags.split(',').map((tag) => tag.trim()).filter(Boolean),
-    )]
+    const normalizedTags = [
+      ...new Set(
+        tags
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+      ),
+    ]
     await save(
       { title: title.trim(), tags: normalizedTags },
       'Заголовок и теги сохранены новой версией.',
@@ -567,24 +843,35 @@ function PublicationMetadataEditor({
   }
 
   return (
-    <section className="metadata-editor" aria-labelledby="metadata-editor-heading">
+    <section
+      className="metadata-editor"
+      aria-labelledby="metadata-editor-heading"
+    >
       <div className="section-heading compact-heading">
         <div>
           <p className="eyebrow">Управление карточкой</p>
           <h2 id="metadata-editor-heading">Метаданные и видимость</h2>
         </div>
         <div className="dialog-actions">
-          <button className="secondary-action" type="button" onClick={() => setIsEditing((value) => !value)}>
+          <button
+            className="secondary-action"
+            type="button"
+            onClick={() => setIsEditing((value) => !value)}
+          >
             {isEditing ? 'Отменить правку' : 'Изменить заголовок и теги'}
           </button>
           <button
             className="secondary-action"
             type="button"
             disabled={isSubmitting}
-            onClick={() => save(
-              { is_hidden: !publication.is_hidden },
-              publication.is_hidden ? 'Публикация возвращена в ленту.' : 'Публикация скрыта из ленты.',
-            )}
+            onClick={() =>
+              save(
+                { is_hidden: !publication.is_hidden },
+                publication.is_hidden
+                  ? 'Публикация возвращена в ленту.'
+                  : 'Публикация скрыта из ленты.',
+              )
+            }
           >
             {publication.is_hidden ? 'Вернуть в ленту' : 'Скрыть из ленты'}
           </button>
@@ -594,11 +881,19 @@ function PublicationMetadataEditor({
         <form className="decision-form" onSubmit={submit}>
           <label className="form-field form-field-wide">
             <span>Заголовок</span>
-            <input value={title} required onChange={(event) => setTitle(event.target.value)} />
+            <input
+              value={title}
+              required
+              onChange={(event) => setTitle(event.target.value)}
+            />
           </label>
           <label className="form-field form-field-wide">
             <span>Теги через запятую</span>
-            <input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="НПА, ИТ, гранты" />
+            <input
+              value={tags}
+              onChange={(event) => setTags(event.target.value)}
+              placeholder="НПА, ИТ, гранты"
+            />
           </label>
           <div className="decision-actions form-field-wide">
             <div>
@@ -611,7 +906,11 @@ function PublicationMetadataEditor({
           </div>
         </form>
       )}
-      {error && <p className="form-error" role="alert">{error}</p>}
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
     </section>
   )
 }
@@ -630,11 +929,13 @@ function DecisionPanel({
   const [priority, setPriority] = useState<Priority>(analysis.proposed_priority)
   const [comment, setComment] = useState('')
   const [confirmUnknown, setConfirmUnknown] = useState(false)
+  const [rejected, setRejected] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
   const submitGuard = useRef(false)
 
-  const isCorrected = summary !== analysis.summary ||
+  const isCorrected =
+    summary !== analysis.summary ||
     category !== analysis.category ||
     priority !== analysis.proposed_priority
   const unknownNeedsConfirmation = priority === 'unknown' && !confirmUnknown
@@ -648,7 +949,7 @@ function DecisionPanel({
 
     const payload: SpecialistDecisionCreate = {
       analysis_id: analysis.id,
-      status: isCorrected ? 'corrected' : 'confirmed',
+      status: rejected ? 'rejected' : isCorrected ? 'corrected' : 'confirmed',
       final_summary: summary === analysis.summary ? null : summary,
       final_category: category,
       final_priority: priority,
@@ -657,10 +958,17 @@ function DecisionPanel({
     }
 
     try {
-      const decision = await api.createSpecialistDecision(publicationId, payload)
+      const decision = await api.createSpecialistDecision(
+        publicationId,
+        payload,
+      )
       await onSaved(decision)
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Не удалось сохранить решение')
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'Не удалось сохранить решение',
+      )
     } finally {
       submitGuard.current = false
       setIsSubmitting(false)
@@ -671,18 +979,31 @@ function DecisionPanel({
     <form className="decision-form" onSubmit={submit}>
       <div className="form-context">
         <span>Analysis ID</span>
-        <strong>{analysis.id} · v{analysis.version}</strong>
+        <strong>
+          {analysis.id} · v{analysis.version}
+        </strong>
         <span>Автор действия</span>
         <strong>{getCurrentActorId()}</strong>
       </div>
       <label className="form-field form-field-wide">
         <span>Итоговое саммари</span>
-        <textarea value={summary} onChange={(event) => setSummary(event.target.value)} rows={7} />
+        <textarea
+          value={summary}
+          onChange={(event) => setSummary(event.target.value)}
+          rows={7}
+        />
       </label>
       <label className="form-field">
         <span>Итоговая категория</span>
-        <select value={category} onChange={(event) => setCategory(event.target.value as Category)}>
-          {categories.map((value) => <option key={value} value={value}>{formatCategory(value)}</option>)}
+        <select
+          value={category}
+          onChange={(event) => setCategory(event.target.value as Category)}
+        >
+          {categories.map((value) => (
+            <option key={value} value={value}>
+              {formatCategory(value)}
+            </option>
+          ))}
         </select>
       </label>
       <label className="form-field">
@@ -694,7 +1015,11 @@ function DecisionPanel({
             setConfirmUnknown(false)
           }}
         >
-          {priorities.map((value) => <option key={value} value={value}>{formatPriority(value)}</option>)}
+          {priorities.map((value) => (
+            <option key={value} value={value}>
+              {formatPriority(value)}
+            </option>
+          ))}
         </select>
       </label>
       {priority === 'unknown' && (
@@ -709,18 +1034,43 @@ function DecisionPanel({
       )}
       <label className="form-field form-field-wide">
         <span>Комментарий · необязательно</span>
-        <textarea value={comment} onChange={(event) => setComment(event.target.value)} rows={4} />
+        <textarea
+          value={comment}
+          onChange={(event) => setComment(event.target.value)}
+          rows={4}
+        />
+      </label>
+      <label className="check-label form-field-wide">
+        <input
+          type="checkbox"
+          checked={rejected}
+          onChange={(e) => setRejected(e.target.checked)}
+        />
+        Отклонить выводы AI
       </label>
       <div className="decision-actions form-field-wide">
         <div>
-          <strong>{isCorrected ? 'Будет сохранено как исправление' : 'Будет сохранено как подтверждение'}</strong>
+          <strong>
+            {rejected
+              ? 'Будет сохранено как отклонение'
+              : isCorrected
+                ? 'Будет сохранено как исправление'
+                : 'Будет сохранено как подтверждение'}
+          </strong>
           <span>AI-версия останется неизменной.</span>
         </div>
-        <button type="submit" disabled={isSubmitting || unknownNeedsConfirmation}>
+        <button
+          type="submit"
+          disabled={isSubmitting || unknownNeedsConfirmation}
+        >
           {isSubmitting ? 'Сохраняем…' : 'Сохранить решение'}
         </button>
       </div>
-      {error && <p className="form-error form-field-wide" role="alert">{error}</p>}
+      {error && (
+        <p className="form-error form-field-wide" role="alert">
+          {error}
+        </p>
+      )}
     </form>
   )
 }
@@ -747,18 +1097,26 @@ function CaseLinkDialog({ publicationId }: { publicationId: string }) {
       }
       if (event.key !== 'Tab' || !dialogRef.current) return
 
-      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ))
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      )
       if (!focusable.length) return
 
       const first = focusable[0]
       const last = focusable.at(-1)!
       const focusIsOutside = !dialogRef.current.contains(document.activeElement)
-      if (event.shiftKey && (document.activeElement === first || focusIsOutside)) {
+      if (
+        event.shiftKey &&
+        (document.activeElement === first || focusIsOutside)
+      ) {
         event.preventDefault()
         last.focus()
-      } else if (!event.shiftKey && (document.activeElement === last || focusIsOutside)) {
+      } else if (
+        !event.shiftKey &&
+        (document.activeElement === last || focusIsOutside)
+      ) {
         event.preventDefault()
         first.focus()
       }
@@ -777,7 +1135,11 @@ function CaseLinkDialog({ publicationId }: { publicationId: string }) {
       setCases(nextCases)
       setSelectedCaseId(nextCases[0]?.id ?? '')
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Не удалось загрузить кейсы НПА')
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'Не удалось загрузить кейсы НПА',
+      )
     }
   }
 
@@ -797,7 +1159,11 @@ function CaseLinkDialog({ publicationId }: { publicationId: string }) {
       setCases(nextCases)
       setStatus('Публикация успешно привязана к НПА.')
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Не удалось привязать публикацию')
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'Не удалось привязать публикацию',
+      )
     } finally {
       setIsLinking(false)
       window.setTimeout(() => confirmRef.current?.focus(), 0)
@@ -806,13 +1172,21 @@ function CaseLinkDialog({ publicationId }: { publicationId: string }) {
 
   return (
     <>
-      <button ref={openerRef} className="secondary-action" type="button" onClick={openDialog}>
+      <button
+        ref={openerRef}
+        className="secondary-action"
+        type="button"
+        onClick={openDialog}
+      >
         Привязать к НПА
       </button>
       {isOpen && (
-        <div className="dialog-backdrop" onMouseDown={(event) => {
-          if (event.target === event.currentTarget) closeDialog()
-        }}>
+        <div
+          className="dialog-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeDialog()
+          }}
+        >
           <section
             ref={dialogRef}
             className="case-dialog"
@@ -825,11 +1199,31 @@ function CaseLinkDialog({ publicationId }: { publicationId: string }) {
                 <p className="eyebrow">Существующие кейсы</p>
                 <h2 id="case-dialog-title">Привязать публикацию к НПА</h2>
               </div>
-              <button ref={closeRef} type="button" className="dialog-close" onClick={closeDialog} aria-label="Закрыть диалог">×</button>
+              <button
+                ref={closeRef}
+                type="button"
+                className="dialog-close"
+                onClick={closeDialog}
+                aria-label="Закрыть диалог"
+              >
+                ×
+              </button>
             </div>
-            {cases === null && !error && <p className="inline-empty" role="status">Загружаем кейсы НПА…</p>}
-            {error && <p className="form-error" role="alert">{error}</p>}
-            {cases?.length === 0 && <p className="inline-empty" role="status">Существующих кейсов НПА пока нет.</p>}
+            {cases === null && !error && (
+              <p className="inline-empty" role="status">
+                Загружаем кейсы НПА…
+              </p>
+            )}
+            {error && (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            )}
+            {cases?.length === 0 && (
+              <p className="inline-empty" role="status">
+                Существующих кейсов НПА пока нет.
+              </p>
+            )}
             {cases && cases.length > 0 && (
               <fieldset className="case-options">
                 <legend>Выберите кейс НПА</legend>
@@ -844,17 +1238,38 @@ function CaseLinkDialog({ publicationId }: { publicationId: string }) {
                     />
                     <span>
                       <strong>{regulatoryCase.title}</strong>
-                      <small>{regulatoryCase.registration_number} · {regulatoryCase.current_stage}</small>
-                      {regulatoryCase.related_publication_ids.includes(publicationId) && <small>Уже привязана</small>}
+                      <small>
+                        {regulatoryCase.registration_number} ·{' '}
+                        {regulatoryCase.current_stage}
+                      </small>
+                      {regulatoryCase.related_publication_ids.includes(
+                        publicationId,
+                      ) && <small>Уже привязана</small>}
                     </span>
                   </label>
                 ))}
               </fieldset>
             )}
-            {status && <p className="action-message" role="status">{status}</p>}
+            {status && (
+              <p className="action-message" role="status">
+                {status}
+              </p>
+            )}
             <div className="dialog-actions">
-              <button type="button" className="secondary-action" onClick={closeDialog}>Отмена</button>
-              <button ref={confirmRef} type="button" className="primary-action" disabled={!selectedCaseId || isLinking} onClick={linkCase}>
+              <button
+                type="button"
+                className="secondary-action"
+                onClick={closeDialog}
+              >
+                Отмена
+              </button>
+              <button
+                ref={confirmRef}
+                type="button"
+                className="primary-action"
+                disabled={!selectedCaseId || isLinking}
+                onClick={linkCase}
+              >
                 {isLinking ? 'Привязываем…' : 'Подтвердить привязку'}
               </button>
             </div>

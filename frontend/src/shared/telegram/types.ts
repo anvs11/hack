@@ -24,6 +24,9 @@ export type TelegramWebAppEvent =
   | 'contentSafeAreaChanged'
 
 export type TelegramWebApp = {
+  isVerticalSwipesEnabled?: boolean
+  disableVerticalSwipes?: () => void
+  enableVerticalSwipes?: () => void
   initData?: string
   viewportHeight?: number
   viewportStableHeight?: number
