@@ -1,0 +1,23 @@
+{
+  "measurement": {
+    "kind": "interactive_latency_smoke",
+    "quality_claim_allowed": false,
+    "reason": "The request timed out before an analysis was returned; no independent human labels were used.",
+    "created_at": "2026-09-05T08:43:00Z",
+    "model": "Qwen/Qwen3.5-0.8B",
+    "provider": "huggingface_local",
+    "device": "cpu",
+    "publication_id": "publication-ca349ada4e1e4f92a3d9e113a93185bf",
+    "timeout_seconds": 300,
+    "max_input_chars": 6000,
+    "max_new_tokens": 384
+  },
+  "result": {
+    "status": "client_timeout",
+    "elapsed_seconds": 300.0061,
+    "http_response_received": false,
+    "analysis_version_created": false,
+    "interactive_demo_suitable": false
+  },
+  "conclusion": "The local CPU path is too slow for the interactive demo on this machine. This result validates latency behavior only and does not measure model quality."
+}

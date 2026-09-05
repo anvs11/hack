@@ -62,6 +62,8 @@ def test_collect_file_source_deduplicates_at_all_exact_levels(
             "status": "success",
             "collected": 4,
             "created": 1,
+            "already_seen": 2,
+            "content_duplicates": 1,
             "exact_duplicates": 3,
             "semantic_candidates": 0,
             "error": None,
@@ -77,6 +79,8 @@ def test_collect_file_source_deduplicates_at_all_exact_levels(
         assert payload["last_collection"] == {
             "collected": 4,
             "created": 1,
+            "already_seen": 2,
+            "content_duplicates": 1,
             "exact_duplicates": 3,
             "semantic_candidates": 0,
         }
@@ -85,6 +89,8 @@ def test_collect_file_source_deduplicates_at_all_exact_levels(
 
     assert second.status_code == 200
     assert second.json()["created"] == 0
+    assert second.json()["already_seen"] == 3
+    assert second.json()["content_duplicates"] == 1
     assert second.json()["exact_duplicates"] == 4
     assert _publication_count(engine) == 11
     with Session(engine) as session:
@@ -92,6 +98,8 @@ def test_collect_file_source_deduplicates_at_all_exact_levels(
         assert row is not None
         payload = json.loads(row.payload_json)
         assert payload["last_collection"]["created"] == 0
+        assert payload["last_collection"]["already_seen"] == 3
+        assert payload["last_collection"]["content_duplicates"] == 1
         assert payload["last_collection"]["exact_duplicates"] == 4
 
 

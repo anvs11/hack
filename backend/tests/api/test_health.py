@@ -79,7 +79,10 @@ def test_only_implemented_api_routes_are_exposed() -> None:
 
     assert api_paths == {
         "/api/collections",
+        "/api/auth/telegram",
         "/api/demo/seed",
+        "/api/duplicate-candidates",
+        "/api/duplicate-candidates/{candidate_id}/reviews",
         "/api/health",
         "/api/publications",
         "/api/publications/{publication_id}",

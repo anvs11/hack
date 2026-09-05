@@ -11,6 +11,8 @@ from backend.app.modules.sources.schemas import (
     SourceCreate,
     SourcePatch,
     SourceResponse,
+    SourceType,
+    validate_source_url,
 )
 
 
@@ -62,6 +64,7 @@ def update_source(
             row.name = values["name"]
             payload["name"] = values["name"]
         if "url" in values:
+            validate_source_url(SourceType(row.type), str(values["url"]))
             row.url = str(values["url"])
             payload["url"] = row.url
         if "enabled" in values:

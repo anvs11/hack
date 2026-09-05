@@ -38,6 +38,11 @@ class SourceCreate(BaseModel):
     url: AnyUrl
     enabled: bool = True
 
+    @model_validator(mode="after")
+    def require_compatible_url(self) -> Self:
+        validate_source_url(self.type, str(self.url))
+        return self
+
 
 class SourcePatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -55,6 +60,15 @@ class SourcePatch(BaseModel):
         return self
 
 
+def validate_source_url(source_type: SourceType, value: str) -> None:
+    scheme = value.split(":", 1)[0].casefold()
+    file_types = {SourceType.FILE, SourceType.SEED, SourceType.TELEGRAM_ARCHIVE}
+    if source_type in file_types and scheme != "file":
+        raise ValueError(f"{source_type.value} source must use a file URL")
+    if source_type not in file_types and scheme not in {"http", "https"}:
+        raise ValueError(f"{source_type.value} source must use an http(s) URL")
+
+
 class SourceCollectionResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -62,6 +76,8 @@ class SourceCollectionResult(BaseModel):
     status: Literal["success", "partial", "failed"]
     collected: int = Field(ge=0)
     created: int = Field(ge=0)
+    already_seen: int = Field(ge=0)
+    content_duplicates: int = Field(ge=0)
     exact_duplicates: int = Field(ge=0)
     semantic_candidates: int = Field(ge=0)
     error: str | None
@@ -76,6 +92,8 @@ class CollectionReport(BaseModel):
     sources: list[SourceCollectionResult]
     collected: int = Field(ge=0)
     created: int = Field(ge=0)
+    already_seen: int = Field(ge=0)
+    content_duplicates: int = Field(ge=0)
     exact_duplicates: int = Field(ge=0)
     semantic_candidates: int = Field(ge=0)
 

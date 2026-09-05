@@ -1,0 +1,26 @@
+{
+  "kind": "live_collection_dedup_breakdown",
+  "quality_claim_allowed": false,
+  "started_at": "2026-09-05T07:16:54.663730Z",
+  "finished_at": "2026-09-05T07:17:51.694926Z",
+  "enabled_sources": 13,
+  "successful_sources": 13,
+  "failed_sources": 0,
+  "collected": 312,
+  "created": 61,
+  "already_seen": 250,
+  "content_duplicates": 1,
+  "exact_duplicates_deprecated": 251,
+  "semantic_candidates": 0,
+  "created_source_ids": [
+    "rss-vedomosti-tech"
+  ],
+  "created_published_at_range": {
+    "from": "2026-07-18T04:24:41Z",
+    "to": "2026-09-05T05:14:56Z"
+  },
+  "database": ".local/live.sqlite3",
+  "database_versioned": false,
+  "reproduction_command": ".venv/bin/python scripts/run_collection_worker.py --db .local/live.sqlite3 --once",
+  "interpretation": "already_seen counts repeat polling by source/external ID or canonical URL; it is not a semantic duplicate verdict; created means new to this database, not necessarily newly published since the previous poll"
+}

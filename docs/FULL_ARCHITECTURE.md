@@ -1,7 +1,7 @@
 # Полная архитектура PR/GR AI Analytics MVP
 
 Статус: **объясняющий рабочий документ, не protected context**  
-Дата: 2026-09-04  
+Дата: 2026-09-05
 Связанный план реализации: [`BACKEND_TODO.md`](BACKEND_TODO.md)
 
 Реестр кандидатов источников: [`SOURCE_INVENTORY.md`](SOURCE_INVENTORY.md)
@@ -42,9 +42,16 @@
 
 ### 2.1. Текущее состояние
 
-**Факт на 2026-09-04:** React frontend и FastAPI работают вместе; replay-анализ можно
-перезапустить через API и сохранить новой версией. LiveLLM adapter реализован, но
-реальные веса Qwen не скачаны и живой inference ещё не проверен.
+**Факт на 2026-09-05:** React frontend и FastAPI работают вместе. В live SQLite
+загружены публикации из 13 RSS/Telegram источников; повторный сбор не создаёт новые
+строки для уже известных ID/URL или идентичного текста. Пользователь может
+создать/исправить/скрыть публикацию, запустить новую
+версию анализа, сохранить решение и разобрать semantic duplicate candidates.
+
+Веса `Qwen3.5-0.8B` и `Qwen3-Embedding-0.6B` проверены фактическими smoke. LLM на CPU
+не завершила одну публикацию за 30 секунд, поэтому deployment поддерживает внешний
+OpenAI-compatible inference. Embeddings успешно обработали synthetic пары и 20
+реальных публикаций; production threshold не выбран.
 
 Текущий путь данных:
 
@@ -59,7 +66,7 @@ flowchart LR
     MSW -.-> CLIENT
 ```
 
-Саммари, AI-приоритет, score и uncertainty уже записаны в
+Саммари, AI-приоритет, `importance_score` и uncertainty уже записаны в
 `data/seed/replay-analyses.json` и `frontend/src/mocks/fixtures.ts`. В real-API режиме
 backend импортирует JSON в SQLite и отдаёт данные через `listSources`,
 `listPublications` и `getPublication`; mock-режим frontend сохранён. Модель в момент
@@ -69,7 +76,7 @@ backend импортирует JSON в SQLite и отдаёт данные че�
 
 ```mermaid
 flowchart LR
-    SOURCES["RSS, регуляторы, Telegram archive, файлы"] --> COLLECT["Collectors"]
+    SOURCES["RSS, регуляторы, Telegram public/archive, файлы"] --> COLLECT["Collectors"]
     COLLECT --> NORMALIZE["Normalize + hash"]
     NORMALIZE --> DEDUP["Deduplication"]
     DEDUP --> PUBLICATION[("Publication")]
@@ -89,10 +96,11 @@ flowchart LR
 
 ### 3.1. Сейчас
 
-**Факт на 2026-09-04:** в репозитории есть `ReplayAnalyzer`, ленивый
-`LiveLLMAnalyzer`, orchestration и endpoint создания версии. Текущее саммари в demo
-по-прежнему приходит из replay fixture; реальные веса Qwen не скачаны, поэтому это
-не доказательство работающего live inference.
+**Факт на 2026-09-05:** в репозитории есть `ReplayAnalyzer`, ленивый
+`LiveLLMAnalyzer`, orchestration и endpoint создания версии. Live adapter выбирает
+локальный Hugging Face либо OpenAI-compatible provider, валидирует один и тот же JSON
+и проверяет evidence. Demo по-прежнему использует replay. CPU smoke локального Qwen
+завершился timeout и не подтверждает пригодность модели для production.
 
 ### 3.2. Где он появится
 
@@ -111,8 +119,8 @@ backend/app/modules/analysis/
 - `replay` — берёт сохранённый проверяемый результат, не требует сети и ключа;
 - `live_llm` — отправляет исходный материал реальной модели.
 
-**Рабочий выбор пользователя для прототипа:** локальный inference через Hugging Face
-`transformers`:
+**Рабочий выбор пользователя для прототипа:** те же Qwen-модели через заменяемые
+адаптеры:
 
 - [`Qwen/Qwen3.5-0.8B`](https://huggingface.co/Qwen/Qwen3.5-0.8B) — саммари и
   structured extraction;
@@ -159,16 +167,16 @@ Hugging Face остаётся первой реализацией. Если по
   "entities": [{"type": "organization", "value": "Пример"}],
   "category": "regulation",
   "criteria": {
-    "K1": 3,
-    "K2": 2,
-    "K3": 2,
-    "K4": 1,
-    "K5": 1,
-    "K6": 1,
-    "H1": false,
-    "H2": false,
-    "H3": false,
-    "H4": false
+    "business_relevance": 3,
+    "event_maturity": 2,
+    "financial_impact": 2,
+    "implementation_effort": 1,
+    "risk_severity": 1,
+    "action_urgency": 1,
+    "state_support_or_accreditation_change": false,
+    "service_or_legal_blocking_risk": false,
+    "strategic_technology_status": false,
+    "binding_legal_precedent": false
   },
   "evidence": [
     {
@@ -185,7 +193,7 @@ Hugging Face остаётся первой реализацией. Если по
 - `id`;
 - номер версии;
 - `input_hash`;
-- итоговый `score`;
+- итоговый `importance_score`;
 - окончательный `proposed_priority`;
 - `needs_review`;
 - `final_priority`;
@@ -212,9 +220,10 @@ sequenceDiagram
     A->>LLM: Структурированный запрос
     LLM-->>A: facts, summary, entities, criteria, evidence
     A->>A: Pydantic validation
+    A->>A: Проверка 3-5 предложений и фактического сжатия
     A->>A: Проверка evidence quote против исходного текста
-    A->>S: criteria + hard flags
-    S-->>A: score, proposed_priority, needs_review
+    A->>S: criteria + hard signals
+    S-->>A: importance_score, proposed_priority, needs_review
     A->>DB: INSERT новой AnalysisVersion
     DB-->>API: сохранённая версия
     API-->>UI: 201 AnalysisVersion
@@ -223,13 +232,15 @@ sequenceDiagram
 Правила надёжности:
 
 1. Ответ модели принимается только после строгой schema validation.
-2. Каждая evidence quote должна находиться в исходном тексте.
-3. Саммари строится из извлечённых фактов, а не из внешних знаний модели.
-4. Невалидный структурированный ответ можно запросить повторно один раз.
-5. После повторной ошибки частичная `AnalysisVersion` не сохраняется.
-6. Хранятся `model`, `prompt_version`, `input_hash` и время анализа.
-7. Повторный анализ создаёт новую версию, старую не обновляет.
-8. Hard flag отправляет материал человеку, но не является финальным решением.
+2. Live summary содержит 3-5 предложений; для исходника от 500 символов оно короче
+   исходного текста.
+3. Каждая evidence quote должна находиться в исходном тексте.
+4. Саммари строится из извлечённых фактов, а не из внешних знаний модели.
+5. Невалидный структурированный ответ можно запросить повторно один раз.
+6. После повторной ошибки частичная `AnalysisVersion` не сохраняется.
+7. Хранятся `model`, `prompt_version`, `input_hash` и время анализа.
+8. Повторный анализ создаёт новую версию, старую не обновляет.
+9. Hard flag отправляет материал человеку, но не является финальным решением.
 
 ### 3.6. Почему нужен replay рядом с live LLM
 
@@ -245,11 +256,13 @@ sequenceDiagram
 
 ### 3.7. Embeddings и cosine similarity для дублей
 
-Дедупликация выполняется в два уровня:
+Дедупликация и защита от повторного polling выполняются разными уровнями:
 
-1. Точные проверки: `(source_id, external_id)`, canonical URL и SHA-256
-   нормализованного текста. Они могут автоматически остановить повторную вставку.
-2. Семантическая проверка: `Qwen3-Embedding-0.6B` строит нормализованные embeddings,
+1. Идемпотентность polling: `(source_id, external_id)` и canonical URL определяют,
+   что источник снова вернул уже известную запись. В отчёте это `already_seen`.
+2. Точное совпадение текста: SHA-256 нормализованного текста предотвращает повторную
+   вставку того же содержания под другим ID/URL. В отчёте это `content_duplicates`.
+3. Семантическая проверка: `Qwen3-Embedding-0.6B` строит нормализованные embeddings,
    после чего обычный код считает cosine similarity.
 
 Cosine similarity:
@@ -265,6 +278,22 @@ cos(a, b) = (a · b) / (||a|| × ||b||)
 Threshold выбирается только на размеченных парах `duplicate / related / different`.
 До такого измерения нельзя объявлять конкретное значение безопасным.
 
+**Гипотеза следующего среза:** embedding используется как быстрый retrieval и отдаёт
+обычному `Qwen3.5-0.8B` только несколько наиболее похожих пар. Генеративная модель
+возвращает структурированный вердикт `duplicate / related / different`, confidence,
+общие и различающиеся факты. Такой ответ остаётся подсказкой в `/duplicates`, а не
+автоматическим удалением. Прогонять генеративную модель на всех материалах polling
+не следует: это смешивает идемпотентность сбора с содержательной оценкой и на
+измеренном CPU-smoke одна публикация уже не уложилась в 30 секунд.
+
+Массовый backfill сохраняет embeddings пакетами в SQLite. Повторный запуск использует
+вектор только при совпадении `publication_id`, model и `content_hash`, поэтому
+долгий CPU-прогон можно продолжить без пересчёта уже готовых пакетов.
+
+В API v0.4.0 очередь читается через `GET /api/duplicate-candidates`, а каждый
+человеческий вердикт сохраняется новой `DuplicateReview`. Экран `/duplicates`
+показывает оба исходника, similarity, модель и историю решений.
+
 ## 4. Полный путь данных
 
 ### 4.1. Сбор
@@ -273,10 +302,11 @@ Threshold выбирается только на размеченных пара
 2. Adapter получает RSS, официальный документ, Telegram archive или файл.
 3. Каждый материал преобразуется в общий внутренний формат.
 4. Текст нормализуется, URL канонизируется, вычисляется SHA-256.
-5. Backend ищет точный дубликат по `(source_id, external_id)`, URL и hash.
+5. Backend сначала ищет уже известную запись по `(source_id, external_id)` и URL,
+   затем отдельно проверяет совпадение текста по hash.
 6. Для оставшихся кандидатов embedding-слой может посчитать cosine similarity.
-7. Новая публикация сохраняется; точный дубликат не вставляется, семантическая пара
-   до валидации threshold только помечается как кандидат.
+7. Новая публикация сохраняется; повторная/идентичная запись не вставляется,
+   семантическая пара до валидации threshold только помечается как кандидат.
 8. Статус источника получает время попытки, успех или ошибку.
 
 Пользователь передал 14 кандидатов для подключения: 9 Telegram URL, 4 сайта и один
@@ -284,8 +314,8 @@ Threshold выбирается только на размеченных пара
 не утверждение, что live-доступ уже настроен. Каждый источник проходит intake,
 получает offline fixture и только затем отдельный adapter.
 
-Для Telegram demo-path строится через `telegram_archive`; live-path требует отдельно
-согласованного доступа. Для сайтов сначала ищем официальный RSS/API, затем оцениваем
+Для Telegram demo-path строится через `telegram_archive`, а live-path использует
+публичный preview без пользовательской сессии. Для сайтов сначала ищем официальный RSS/API, затем оцениваем
 допустимый HTML parser. Source-specific adapter заканчивается на общей структуре
 публикации и не вызывает LLM самостоятельно.
 
@@ -293,7 +323,7 @@ Threshold выбирается только на размеченных пара
 
 1. Для новой публикации вызывается replay или live analyzer.
 2. Analyzer извлекает факты, саммари, сущности, категорию, критерии и evidence.
-3. Backend валидирует результат.
+3. Backend валидирует схему, 3-5 предложений, сжатие и evidence grounding.
 4. Детерминированный scorer вычисляет предлагаемый приоритет.
 5. Backend создаёт неизменяемую `AnalysisVersion`.
 
@@ -332,7 +362,10 @@ Telegram-рассылка отложены. Достоверный аудит с
 | --- | --- | --- |
 | `Source` | URL, тип, enabled, состояние сбора | Пользователь и collector status |
 | `Publication` | Исходный нормализованный материал | Collector/import; после импорта почти неизменяем |
+| `PublicationRevision` | Title, tags и visibility после ручной правки | Пользователь; append-only |
 | `DuplicateCandidate` | Ближайшую semantic-пару, similarity и статус разметки | Collection service; специалист позже размечает duplicate/related/different |
+| `DuplicateReview` | Версию человеческого вердикта по паре | Специалист; append-only |
+| `PublicationEmbedding` | Кэш вектора для конкретных model и content hash | Dedup backfill; пересчитывается при несовпадении hash |
 | `AnalysisVersion` | Версию AI/replay-анализа | Analysis service; append-only |
 | `SpecialistDecision` | Финальную оценку человека | PR/GR специалист; append-only |
 | `RegulatoryCase` | Долгоживущую карточку НПА | Специалист; текущая проекция |
@@ -358,7 +391,7 @@ LifecycleEvent       = как официально менялась его ст�
 | `sources` | CRUD по действующему контракту, collectors, collection status |
 | `publications` | Импорт, dedup, список, поиск, фильтры, detail |
 | `analysis` | Replay/live LLM, validation, versioning |
-| `prioritization` | Чистая детерминированная функция score/priority/review |
+| `prioritization` | Чистая детерминированная функция importance/priority/review |
 | `scripts/evaluate_analysis.py` | Offline-метрики на frozen dataset и JSON/CSV/MD отчёт |
 | `decisions` | Решения специалиста и history; следующий backend-срез |
 | `regulatory_cases` | Карточки НПА, links и append-only lifecycle |
@@ -389,6 +422,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 | --- | --- | --- |
 | `/feed` | `FeedPage` | Очередь сигналов и фильтры |
 | `/publications/:id` | `PublicationPage` | Исходник и latest AI-анализ |
+| `/duplicates` | `DuplicatesPage` | Human-in-the-loop очередь похожих пар |
 | `/regulatory-cases/:id` | `RegulatoryCasePage` | Карточка НПА и timeline |
 | `/sources` | `SourcesPage` | CRUD-управление и ручной сбор источников |
 | `/digest` | `DigestPage` | Клиентский управленческий снимок и JSON/Markdown export |
@@ -399,8 +433,11 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 | --- | --- | --- |
 | Лента | `GET /api/publications` | Публикации с latest analysis/decision |
 | Лента | `GET /api/sources` | Названия и типы источников для фильтра |
+| Лента | `POST /api/publications` | Ручное добавление отсутствующего материала |
 | Публикация | `GET /api/publications/{id}` | Исходник и последний AI-анализ |
 | Публикация | `GET /api/publications/{id}/history` | Все версии анализа и решений |
+| Публикация | `PATCH /api/publications/{id}` | Новая metadata revision или soft-hide |
+| Публикация | `POST /api/publications/{id}/analyses` | Новая неизменяемая версия AI/replay |
 | Публикация | `POST /api/publications/{id}/decisions` | Новое append-only решение специалиста |
 | Публикация | `GET /api/regulatory-cases`, `PUT /api/regulatory-cases/{case_id}/publications/{id}` | Выбор кейса и идемпотентная привязка |
 | Кейс НПА | `GET /api/regulatory-cases/{id}` | Карточка и timeline |
@@ -410,6 +447,9 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 | Источники | `POST /api/sources` | Новый источник |
 | Источники | `PATCH /api/sources/{id}` | Изменение name/URL или enabled |
 | Источники | `POST /api/sources/{id}/collections` | Синхронный отчёт ручного сбора |
+| Дубли | `GET /api/duplicate-candidates` | Пары, similarity и история вердиктов |
+| Дубли | `POST /api/duplicate-candidates/{id}/reviews` | Новый append-only вердикт человека |
+| Telegram startup | `POST /api/auth/telegram` | Проверка подписи и срока raw `initData` |
 | Дайджест | `GET /api/publications` (все страницы), `GET /api/publications/{id}/history`, `GET /api/regulatory-cases`, `GET /api/regulatory-cases/{id}`, `GET /api/sources` | Клиентский `DigestSnapshot` без отдельного endpoint |
 
 ### 7.4. Что делает React-код
@@ -419,7 +459,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 - `shared/api/client.ts` формирует fetch-запросы и ошибки.
 - `useApiResource.ts` хранит состояния loading/success/error и отменяет старый запрос.
 - `FeedPage.tsx` синхронизирует поиск/фильтры с URL.
-- Страницы отображают данные; бизнес-правила и расчёт score в них жить не должны.
+- Страницы отображают данные; бизнес-правила и расчёт важности в них жить не должны.
 
 Лента дополнительно сортирует полученную страницу по порядку
 `critical → high → medium → low → unknown`, затем по дате и `id`. Backend должен
@@ -443,6 +483,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 
 ```text
 Лента             → текущие сигналы
+Дубли              → похожие публикации для решения человека
 Публикация         → один исходник и объяснение AI
 Кейс НПА           → долгоживущая история документа
 Источники          → откуда собираем
@@ -456,7 +497,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 | Логотип `Insight` | Возвращает на `/feed` | После открытия страницы — read API ленты |
 | `Меню` | Прокручивает к основной навигации; это не popup | Нет |
 | `Лента` | Открывает `/feed` | publications + sources |
-| `Публикация` | Demo-shortcut на `pub-001` | getPublication |
+| `Дубли` | Открывает очередь semantic candidates | listDuplicateCandidates |
 | `Кейс НПА` | Demo-shortcut на `case-001` | getRegulatoryCase |
 | `Источники` | Открывает список и управление источниками | listSources |
 | `Дайджест` | Открывает клиентский снимок по всем доступным данным | Существующие read API публикаций, кейсов и источников |
@@ -467,11 +508,15 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 | Фильтр `Категория` | regulation/reputation/competitor/trend | `category` |
 | Фильтр `AI-приоритет` | critical/high/medium/low/unknown | `proposed_priority` |
 | Фильтр `Статус проверки` | Нужна/не нужна проверка | `needs_review` |
+| Фильтры `Дата с` / `Дата по` | Inclusive UTC-границы выбранных дней | `published_from` / `published_to` |
 | `Сбросить` | Очищает поиск и фильтры | Повторный listPublications |
 | Заголовок карточки | Открывает detail публикации | getPublication |
 | `Открыть оригинал` | Открывает внешний URL в новой вкладке | Нет |
 | `Вернуться в ленту` | Возвращает к списку | Read API ленты |
 | `Открыть первоисточник` | Открывает внешний URL | Нет |
+| `Запустить/повторить AI-анализ` | Создаёт новую версию и перечитывает историю | createPublicationAnalysis |
+| `Редактировать публикацию` | Создаёт новую title/tags revision | updatePublication |
+| `Скрыть` / `Вернуть` | Меняет soft visibility новой revision | updatePublication |
 | Версия AI-анализа | Переключает отображаемую неизменяемую версию | Нет |
 | `Сохранить решение` | Создаёт новое решение специалиста и перечитывает detail/history | createSpecialistDecision |
 | `Привязать к НПА` | Выбирает кейс и создаёт идемпотентную связь | listRegulatoryCases + linkPublicationToCase |
@@ -482,6 +527,8 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 | `Редактировать` | Изменяет name и URL; тип остаётся read-only | updateSource |
 | `Включить` / `Отключить` | Меняет enabled без удаления публикаций | updateSource |
 | `Запустить сбор` | Выполняет синхронный сбор, показывает отчёт и перечитывает статус | collectSource + listSources |
+| `Это дубликат` / `Связанные темы` / `Разные публикации` | Сохраняет новый вердикт и обновляет очередь | createDuplicateReview |
+| `Показать ещё` | Загружает следующие 50 semantic candidates | listDuplicateCandidates с offset |
 | `Обновить` в дайджесте | Заново загружает данные и создаёт снимок с новым `generated_at` | Существующие read API |
 | `Скачать JSON` / `Скачать Markdown` | Сохраняет тот же снимок, который показан в UI | Нет |
 | Карточки дайджеста | Ведут на publication/case и оригиналы/подтверждения | Соответствующий read API для внутренних страниц |
@@ -491,13 +538,11 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 
 ### 8.3. Чего во frontend пока нет
 
-**Факт:** frontend уже сохраняет решения специалиста, связывает публикации с кейсом
-и создаёт официальные lifecycle events. В нём всё ещё отсутствуют:
+**Факт:** frontend уже сохраняет решения специалиста, управляет publication metadata,
+запускает анализ, разбирает semantic candidates, связывает публикации с кейсом и
+создаёт официальные lifecycle events. В нём всё ещё отсутствуют:
 
-- кнопка запуска replay/live анализа;
-- ручное добавление/редактирование/скрытие публикации;
 - создание кейса НПА;
-- дата-фильтры `published_from`/`published_to`;
 - серверная генерация дайджеста.
 
 Оставшиеся действия нельзя получить одной реализацией backend: соответствующие элементы и
@@ -506,13 +551,13 @@ OpenAPI, часть требует отдельного согласованно
 
 ### 8.4. Важные пояснения к текстам интерфейса
 
-- `Live demo` сейчас означает живой интерфейс и рабочий replay API, но не live-сбор
-  и не подтверждённый inference на реальных весах Qwen.
+- `Live demo` означает живой интерфейс, реальные источники и рабочий replay API.
+  Локальный Qwen на CPU не прошёл latency gate; live LLM требует внешнего provider.
 - `Demo space` сообщает, что данные демонстрационные.
 - `Проверено AI` сейчас означает только `needs_review=false` в fixture. Это не
   человеческая проверка и не юридическое подтверждение.
-- Пункты `Публикация` и `Кейс НПА` в верхнем меню жёстко ведут на demo ID; в рабочем
-  продукте пользователь обычно приходит туда из конкретной карточки.
+- Пункт `Кейс НПА` пока жёстко ведёт на demo ID; в рабочем продукте пользователь
+  обычно приходит туда из конкретной карточки.
 - Demo-метка на карточке `Источники` означает происхождение данных, а не запрет редактирования.
 - Страница `Дайджест` прямо сообщает, что это клиентский снимок, а серверный API и
   хранение версий не предусмотрены.
@@ -528,7 +573,7 @@ OpenAPI, часть требует отдельного согласованно
     ↓
 Открыть карточку и первоисточник
     ↓
-Проверить facts/evidence/summary/score
+Проверить facts/evidence/summary/importance
     ↓
 Подтвердить или исправить AI-предложение
     ↓
@@ -582,7 +627,7 @@ LifecycleEvent не создаётся
 | Локальный Hugging Face inference | Использует выбранные Qwen-веса без платного API | Нужны download, RAM и измерение latency на demo-машине |
 | Analyzer adapter | Можно заменить провайдера без изменения домена | Не надо строить универсальный framework заранее |
 | Structured output | Машинная валидация facts/entities/evidence | Схема всё равно не гарантирует истинность фактов |
-| Детерминированный score | Повторяемость и объяснимость | Формулу надо согласовать отдельно |
+| Детерминированный индекс важности | Повторяемость и объяснимость | Пороги надо проверить на разметке специалистов |
 | Append-only версии | Аудит AI и человеческих правок | Больше строк и нужна явная latest-проекция |
 | Синхронный collection report | Клиент сразу получает измеримый итог без фиктивного job | Долгий live-сбор позднее потребует настоящую очередь и status endpoint |
 | Простой поиск до измерения | Достаточен для 10–50 demo-материалов | FTS5 понадобится при подтверждённой нагрузке |
@@ -594,11 +639,11 @@ LifecycleEvent не создаётся
 | Источник недоступен | Сохраняет `last_error`; другие источники продолжают работу |
 | Дубликат | Не создаёт вторую публикацию |
 | Высокая cosine similarity без утверждённого threshold | Сохраняет пару как кандидата, не удаляет публикацию автоматически |
-| Веса HF ещё не скачаны | Replay продолжает работать; live analyzer/embedder сообщает controlled unavailable |
+| Веса/provider недоступны | Replay продолжает работать; live analyzer/embedder сообщает controlled unavailable |
 | LLM недоступна | Не создаёт частичный анализ; replay остаётся доступен |
 | LLM вернула невалидный JSON | Один retry, затем контролируемая ошибка |
 | Evidence не найден в тексте | Анализ отклоняется или уходит в review, правило надо зафиксировать |
-| Неизвестный критерий | Должен быть `unknown`, но текущий OpenAPI этого не позволяет |
+| Неизвестный критерий | `null`, индекс не рассчитывается, карточка получает `unknown` и `needs_review` |
 | Неверный lifecycle-переход | `409 conflict`, событие не записывается |
 | Telegram утверждает новую стадию НПА | Публикация сохраняется, lifecycle не меняется |
 | Frontend не получил API | Показывает error state, а не пустую успешную страницу |
@@ -610,26 +655,26 @@ LifecycleEvent не создаётся
 seed-публикации, чей `id` уже существовал до запуска; поэтому два запуска на чистой
 БД дают соответственно `duplicates=0` и `duplicates=10`.
 
-1. Конкретный LLM-провайдер и бюджет.
-2. Prompt v1 и ручной набор примеров для его проверки.
-3. Финальную формулу score и полную методику K/N. Для A7 временно разрешены сумма
-   K1–K6, thresholds 0/5/10/15 и повышение любого H1–H4 минимум до high.
-4. Как представить неизвестное значение критерия: текущая схема требует число/boolean.
-5. N1–N4 против H1–H4.
-6. Допустимые переходы lifecycle НПА.
+1. Production LLM-провайдер, API credential и бюджет. Adapter поддерживает local HF
+   и OpenAI-compatible API; локальный Qwen CPU smoke не уложился в 30 секунд.
+2. Независимый ручной набор примеров для проверки prompt `analysis-v3` и методики из
+   `docs/IMPORTANCE_SCORING.md`.
+3. Подтвердить или скорректировать равные веса и границы 0/5/10/15 на этой разметке.
+6. Расширение уже зафиксированной матрицы lifecycle, если появятся новые стадии.
 7. Когда нужен переход от синхронного collection report к настоящей очереди с
    хранилищем заданий и status endpoint.
-8. Новые endpoints для ручного CRUD публикаций и скрытия источников.
-9. Seed для `case-001`, lifecycle и specialist decision.
+8. Нужен ли hard-delete источника сверх реализованного soft-disable.
+9. Нужны ли runtime lifecycle events и specialist decisions в demo seed.
 10. Серверный API дайджеста.
 11. Тип источника для сайта без RSS: текущий enum не содержит `website/html`.
 12. Канал доставки для «Правового комитета АРПП / дайджестов ИРИ и ЭБР».
-13. Согласованный способ live-доступа к Telegram и глубина истории.
-14. Формат отдельного основания для каждого K/N/H-критерия: текущая схема хранит
+13. Нужна ли глубина Telegram-истории сверх доступного публичного preview.
+14. Формат отдельного основания для каждого именованного критерия: текущая схема хранит
     значения criteria и общий evidence, но не связывает reason с конкретным критерием.
 15. Threshold cosine similarity и размеченный набор пар duplicate/related/different.
 
-Эти решения не мешают реализовать health, БД, seed и первые read-endpoints.
+Эти решения не мешают текущему вертикальному demo, но ограничивают утверждения о
+production readiness и измеренном качестве AI.
 
 ## 13. Порядок соединения с существующим frontend
 
@@ -643,20 +688,20 @@ seed-публикации, чей `id` уже существовал до зап
 8. Передать frontend-владельцу готовые POST-endpoints для кнопок анализа/decision.
 9. Только после согласования scoring и eval подключить live LLM.
 
-**Факт на 2026-09-04:** пункты 1–5 выполнены для публикаций и источников. Frontend
-проверен в браузере на real API: лента показывает 10 seed-публикаций, фильтрация,
-поиск, detail и список из 5 источников работают. Backend выбирает максимальную
-версию `AnalysisVersion`, сохраняя прежние версии. `latest_decision` пока `null`,
-потому что хранилище решений относится к следующему согласованному срезу.
+**Факт на 2026-09-05:** вертикальный путь seed и live-источников работает с real API.
+Backend выбирает максимальные append-only версии `PublicationRevision`,
+`AnalysisVersion`, `SpecialistDecision` и `DuplicateReview`, сохраняя историю.
 
-**Факт на 2026-09-04:** контрактные операции создания и изменения источника также
-реализованы. В API v0.2 `collectSource` и `collectEnabledSources` выполняются
+Контрактные операции создания и изменения источника реализованы. В API v0.4.0
+`collectSource` и `collectEnabledSources` выполняются
 синхронно и возвращают `CollectionReport`; общий service-path обновляет
 `last_checked_at`, `last_success_at` и `last_error`.
-Работают строгий offline JSON collector и RSS 2.0 parser. Exact-дубли проверяются
-по source/external ID, canonical URL и SHA-256. Optional Qwen embedder только
+Работают strict offline JSON, RSS 2.0 и Telegram public preview collectors.
+`CollectionReport` отдельно считает `already_seen` по source/external ID или
+canonical URL и `content_duplicates` по SHA-256 текста; deprecated-поле
+`exact_duplicates` оставлено как их сумма для обратной совместимости. Optional Qwen embedder только
 сохраняет ближайшую пару `unreviewed` и не удаляет публикацию; threshold пока не
-выбран. Regulator и Telegram live adapters ещё не реализованы.
+выбран. Regulator/full-text HTML adapter ещё не реализован.
 
 ## 14. Как отличать данные, AI и человеческое решение
 
@@ -675,10 +720,11 @@ seed-публикации, чей `id` уже существовал до зап
 - backend поднимается канонической командой;
 - seed воспроизводится без сети и дублей;
 - frontend одинаково работает с mocks и совместимым real API;
-- live LLM создаёт валидную новую `AnalysisVersion`, но replay остаётся доступен;
+- live LLM либо создаёт валидную новую `AnalysisVersion`, либо возвращает
+  контролируемую ошибку без частичной записи; replay остаётся доступен;
 - evidence проверяется относительно исходного текста;
-- score вычисляется обычным кодом; временная MVP-формула A7 — сумма K1–K6 с
-  thresholds 0/5/10/15, любой H1–H4 повышает предложение минимум до high;
+- `importance_score` вычисляется обычным кодом как сумма шести именованных факторов;
+  границы — 0/5/10/15, любой hard signal повышает предложение минимум до high;
 - специалист может отдельно сохранить решение;
 - история анализа, решения и НПА не затирается;
 - неподтверждённый источник не меняет lifecycle;
@@ -688,7 +734,7 @@ seed-публикации, чей `id` уже существовал до зап
 
 ## 16. Проверка документа
 
-- [x] Все пять frontend-маршрутов описаны.
+- [x] Все шесть frontend-маршрутов описаны.
 - [x] Все текущие API-вызовы frontend описаны.
 - [x] Все видимые кнопки, ссылки, фильтры и badges объяснены.
 - [x] Replay и live LLM явно разделены.

@@ -1,0 +1,39 @@
+{
+  "evaluation_id": "live-dedup-cache-v1",
+  "measured_at": "2026-09-05",
+  "database": ".local/live.sqlite3",
+  "model": "Qwen/Qwen3-Embedding-0.6B",
+  "runs": [
+    {
+      "command": ".venv/bin/python scripts/backfill_duplicate_candidates.py --limit 40",
+      "publications": 40,
+      "candidates_created": 20,
+      "candidates_already_present": 19,
+      "duration_seconds": 52.79
+    },
+    {
+      "command": ".venv/bin/python scripts/backfill_duplicate_candidates.py --limit 41",
+      "publications": 41,
+      "candidates_created": 1,
+      "candidates_already_present": 39,
+      "duration_seconds": 5.565
+    },
+    {
+      "command": ".venv/bin/python scripts/backfill_duplicate_candidates.py --limit 0",
+      "publications": 311,
+      "candidates_created": 270,
+      "candidates_already_present": 40,
+      "duration_seconds": 201.822
+    },
+    {
+      "command": ".venv/bin/python scripts/backfill_duplicate_candidates.py --limit 0",
+      "publications": 311,
+      "candidates_created": 0,
+      "candidates_already_present": 310,
+      "duration_seconds": 0.009
+    }
+  ],
+  "cache_observation": "The incremental run reused 40 cached vectors and embedded one new publication. The full rerun reused the completed corpus and created no duplicate candidates.",
+  "quality_claim_allowed": false,
+  "production_threshold": null
+}

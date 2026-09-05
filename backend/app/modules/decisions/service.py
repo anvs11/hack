@@ -11,10 +11,11 @@ from backend.app.errors import ApiError
 from backend.app.modules.analysis.models import AnalysisVersion
 from backend.app.modules.decisions.models import SpecialistDecision as DecisionModel
 from backend.app.modules.decisions.schemas import SpecialistDecisionCreate
-from backend.app.modules.publications.models import Publication
+from backend.app.modules.publications.models import Publication, PublicationRevision
 from backend.app.modules.publications.schemas import (
     AnalysisVersionResponse,
     PublicationHistory,
+    PublicationRevisionResponse,
     SpecialistDecision,
 )
 
@@ -89,10 +90,29 @@ def get_publication_history(
         .where(DecisionModel.publication_id == publication_id)
         .order_by(DecisionModel.version, DecisionModel.id)
     ).all()
+    revisions = session.scalars(
+        select(PublicationRevision)
+        .where(PublicationRevision.publication_id == publication_id)
+        .order_by(PublicationRevision.version, PublicationRevision.id)
+    ).all()
     return PublicationHistory(
         publication_id=publication_id,
+        revisions=[revision_response(row) for row in revisions],
         analyses=[analysis_response(row) for row in analyses],
         decisions=[decision_response(row) for row in decisions],
+    )
+
+
+def revision_response(row: PublicationRevision) -> PublicationRevisionResponse:
+    return PublicationRevisionResponse(
+        id=row.id,
+        publication_id=row.publication_id,
+        version=row.version,
+        title=row.title,
+        tags=json.loads(row.tags_json),
+        is_hidden=bool(row.is_hidden),
+        author_id=row.author_id,
+        created_at=row.created_at,
     )
 
 

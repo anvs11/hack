@@ -3,7 +3,7 @@
     "labels": "data/eval/smoke-labels-v1.json",
     "labels_sha256": "b4cf2b02191339b96146237d5bd89ba6af3889d2579cac2dc87fbfa1eb539f46",
     "predictions": "data/seed/replay-analyses.json",
-    "predictions_sha256": "60818137a6b82ef85a6d8ca21a1cd5e595e268ab205366206f4875c0335ef164",
+    "predictions_sha256": "059d1b98311c3f637e48949979c4c5c5ffbdc271eca09babb8e73fa84c654210",
     "publications": "data/seed/publications.json",
     "publications_sha256": "55c297df0401fc0dcb2759b9aebd56fa501adef566a455bfcbf13f0eb1e88dd6"
   },
@@ -146,6 +146,12 @@
     "all_quotes_grounded_prediction_count": 10,
     "all_quotes_grounded_prediction_rate": 1.0,
     "empty_evidence_prediction_count": 0
+  },
+  "summary_compression": {
+    "measured_prediction_count": 10,
+    "mean_summary_to_input_char_ratio": 1.579867,
+    "min_summary_to_input_char_ratio": 1.325758,
+    "max_summary_to_input_char_ratio": 1.95614
   },
   "summary_factuality": {
     "status": "not_measured",

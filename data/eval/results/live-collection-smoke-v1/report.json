@@ -1,0 +1,16 @@
+{
+  "kind": "live_collection_smoke",
+  "quality_claim_allowed": false,
+  "started_at": "2026-09-04T23:01:02.494412Z",
+  "finished_at": "2026-09-04T23:01:08.998805Z",
+  "enabled_sources": 13,
+  "successful_sources": 13,
+  "failed_sources": 0,
+  "collected": 312,
+  "created": 1,
+  "exact_duplicates": 311,
+  "semantic_candidates": 0,
+  "database": ".local/live.sqlite3",
+  "database_versioned": false,
+  "reproduction_command": ".venv/bin/python scripts/run_collection_worker.py --db .local/live.sqlite3 --once"
+}

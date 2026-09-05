@@ -10,12 +10,13 @@ from sqlalchemy.orm import Session
 
 from backend.app.db import build_engine
 from backend.app.main import create_app
-from backend.app.modules.analysis import service
+from backend.app.modules.analysis import analyzers, service
 from backend.app.modules.analysis.analyzers import (
     AnalysisDraft,
     AnalyzerOutputInvalid,
     AnalyzerUnavailable,
     LiveLLMAnalyzer,
+    OpenAICompatibleGenerator,
 )
 from backend.app.modules.analysis.models import AnalysisVersion
 from backend.app.modules.publications.models import Publication
@@ -42,21 +43,21 @@ def _version_count(engine: Engine, publication_id: str) -> int:
 
 def _live_output(quote: str = "тест") -> dict:
     return {
-        "summary": "Краткое тестовое резюме.",
+        "summary": "Первый вывод. Второй вывод. Третий вывод.",
         "facts": ["Проверяемый факт"],
         "entities": [{"type": "topic", "value": "тест"}],
         "category": "trend",
         "criteria": {
-            "K1": 0,
-            "K2": 0,
-            "K3": 0,
-            "K4": 0,
-            "K5": 0,
-            "K6": 0,
-            "H1": False,
-            "H2": False,
-            "H3": False,
-            "H4": False,
+            "business_relevance": 0,
+            "event_maturity": 0,
+            "financial_impact": 0,
+            "implementation_effort": 0,
+            "risk_severity": 0,
+            "action_urgency": 0,
+            "state_support_or_accreditation_change": False,
+            "service_or_legal_blocking_risk": False,
+            "strategic_technology_status": False,
+            "binding_legal_precedent": False,
         },
         "evidence": [{"claim": "Есть тест", "quote": quote}],
         "uncertainty": 0.4,
@@ -200,7 +201,7 @@ def test_valid_live_draft_is_saved_with_deterministic_score(
                 prompt_version="analysis-v1",
                 **_live_output(quote="уведомление"),
                 proposed_priority="unknown",
-                score=0,
+                importance_score=0,
                 needs_review=True,
             )
 
@@ -214,7 +215,7 @@ def test_valid_live_draft_is_saved_with_deterministic_score(
     assert response.status_code == 201
     assert response.json()["analyzer"] == "live_llm"
     assert response.json()["proposed_priority"] == "low"
-    assert response.json()["score"] == 0
+    assert response.json()["importance_score"] == 0
     assert response.json()["needs_review"] is True
     assert _version_count(engine, "pub-006") == 2
 
@@ -232,7 +233,7 @@ def test_ungrounded_evidence_is_rejected_without_writing(
                 prompt_version="analysis-v1",
                 **_live_output(quote="цитата отсутствует в исходном тексте"),
                 proposed_priority="unknown",
-                score=0,
+                importance_score=0,
                 needs_review=True,
             )
 
@@ -270,10 +271,10 @@ def test_live_adapter_parses_json_and_does_not_delegate_scoring() -> None:
     )
 
     assert calls == 1
-    assert draft.summary == "Краткое тестовое резюме."
-    assert draft.prompt_version == "analysis-v2"
+    assert draft.summary == "Первый вывод. Второй вывод. Третий вывод."
+    assert draft.prompt_version == "analysis-v3"
     assert draft.proposed_priority.value == "unknown"
-    assert draft.score == 0
+    assert draft.importance_score is None
     assert draft.needs_review is True
 
 
@@ -297,9 +298,181 @@ def test_live_adapter_retries_invalid_json_once() -> None:
     assert calls == 2
 
 
+def test_live_adapter_retries_ungrounded_evidence_once() -> None:
+    calls = 0
+
+    def generator(**_kwargs) -> list[dict]:
+        nonlocal calls
+        calls += 1
+        output = _live_output(
+            quote=(
+                "цитата отсутствует"
+                if calls == 1
+                else "Это тестовый текст"
+            )
+        )
+        return [{"generated_text": json.dumps(output, ensure_ascii=False)}]
+
+    analyzer = LiveLLMAnalyzer(generator=generator)
+    draft = analyzer.analyze(
+        publication_id="pub-test",
+        title="Тест",
+        content="Это тестовый текст.",
+    )
+
+    assert calls == 2
+    assert draft.evidence[0].quote == "Это тестовый текст"
+
+
+@pytest.mark.parametrize(
+    ("content", "summary"),
+    [
+        ("Короткий текст.", "Только одно предложение."),
+        (
+            "Длинный исходный текст. " * 40,
+            ("Очень " * 180) + "длинно. Второе предложение. Третье предложение.",
+        ),
+    ],
+)
+def test_live_adapter_rejects_non_compressed_summary(
+    content: str,
+    summary: str,
+) -> None:
+    calls = 0
+
+    def generator(**_kwargs) -> list[dict]:
+        nonlocal calls
+        calls += 1
+        output = _live_output()
+        output["summary"] = summary
+        return [{"generated_text": json.dumps(output)}]
+
+    analyzer = LiveLLMAnalyzer(generator=generator)
+
+    with pytest.raises(AnalyzerOutputInvalid):
+        analyzer.analyze(
+            publication_id="pub-test",
+            title="Тест",
+            content=content,
+        )
+
+    assert calls == 2
+
+
 def test_live_adapter_does_not_import_transformers_on_construction() -> None:
     was_loaded = "transformers" in sys.modules
 
     LiveLLMAnalyzer()
 
     assert ("transformers" in sys.modules) is was_loaded
+
+
+def test_openai_compatible_adapter_flattens_chat_and_parses_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        @staticmethod
+        def read() -> bytes:
+            return json.dumps(
+                {"choices": [{"message": {"content": "{\"ok\": true}"}}]}
+            ).encode()
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["authorization"] = request.headers["Authorization"]
+        captured["body"] = json.loads(request.data)
+        captured["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr(analyzers, "urlopen", fake_urlopen)
+    generator = OpenAICompatibleGenerator(
+        base_url="https://llm.example/v1/",
+        api_key="secret-for-test",
+        model_id="Qwen/Qwen3.5-0.8B",
+        timeout=17,
+    )
+
+    result = generator(
+        text=[
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "Верни JSON"}],
+            }
+        ],
+        max_new_tokens=123,
+        do_sample=False,
+        return_full_text=False,
+    )
+
+    assert result == [{"generated_text": '{"ok": true}'}]
+    assert captured == {
+        "url": "https://llm.example/v1/chat/completions",
+        "authorization": "Bearer secret-for-test",
+        "body": {
+            "model": "Qwen/Qwen3.5-0.8B",
+            "messages": [{"role": "user", "content": "Верни JSON"}],
+            "temperature": 0,
+            "max_tokens": 123,
+        },
+        "timeout": 17,
+    }
+
+
+def test_openai_compatible_provider_requires_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HACK_LLM_API_BASE_URL", raising=False)
+    monkeypatch.delenv("HACK_LLM_API_KEY", raising=False)
+    analyzer = LiveLLMAnalyzer(provider="openai_compatible")
+
+    with pytest.raises(AnalyzerUnavailable, match="Сервис AI-анализа не настроен"):
+        analyzer._load_generator()
+
+
+def test_openai_compatible_adapter_can_disable_reasoning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        @staticmethod
+        def read() -> bytes:
+            return json.dumps(
+                {"choices": [{"message": {"content": "{\"ok\": true}"}}]}
+            ).encode()
+
+    def fake_urlopen(request, timeout):
+        captured.update(json.loads(request.data))
+        return Response()
+
+    monkeypatch.setattr(analyzers, "urlopen", fake_urlopen)
+    generator = OpenAICompatibleGenerator(
+        base_url="https://llm.example/v1",
+        api_key="secret-for-test",
+        model_id="qwen/qwen3.8-flash",
+        timeout=17,
+        reasoning_effort="none",
+    )
+
+    generator(
+        text=[{"role": "user", "content": [{"type": "text", "text": "JSON"}]}],
+        max_new_tokens=123,
+        do_sample=False,
+        return_full_text=False,
+    )
+
+    assert captured["reasoning"] == {"effort": "none"}

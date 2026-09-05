@@ -1,7 +1,7 @@
 # Реестр источников для подключения
 
-Статус: **входные данные пользователя, способы подключения не проверены**  
-Дата получения: 2026-09-04  
+Статус: **13 URL технически подключены; правовой intake и один канал ещё открыты**
+Дата обновления: 2026-09-05
 Связанная архитектура: [`FULL_ARCHITECTURE.md`](FULL_ARCHITECTURE.md)
 
 Этот список фиксирует, что команда хочет мониторить. Наличие URL не означает, что
@@ -13,20 +13,20 @@ intake.
 
 | Candidate ID | Предоставленный источник | URL | Кандидат типа | Текущий статус |
 | --- | --- | --- | --- | --- |
-| `tg-cit-gov` | Цифровые индустриальные технологии — дайджест | `https://t.me/cit_gov` | `telegram` / demo `telegram_archive` | Не проверен |
-| `tg-rfrit` | РФРИТ | `https://t.me/rfrit` | `telegram` / demo `telegram_archive` | Не проверен |
-| `tg-grants-for-business` | Гранты для ИТ | `https://t.me/grantsforbussines` | `telegram` / demo `telegram_archive` | Не проверен |
-| `tg-cio-channel` | CIO: канал IT-руководителей | `https://t.me/cio_channel` | `telegram` / demo `telegram_archive` | Не проверен |
-| `tg-rustorgpred` | Торгпред — тендеры и закупки | `https://t.me/rustorgpred` | `telegram` / demo `telegram_archive` | Не проверен |
-| `tg-government-rus` | Правительство РФ — сводки | `https://t.me/government_rus` | `telegram` / demo `telegram_archive` | Не проверен |
-| `tg-arperf` | АРПЭ — новости | `https://t.me/arperf` | `telegram` / demo `telegram_archive` | Не проверен |
-| `tg-icipr` | ЦИПР — новости и анонсы мероприятий | `https://t.me/icipr` | `telegram` / demo `telegram_archive` | Не проверен |
+| `tg-cit-gov` | Цифровые индустриальные технологии — дайджест | `https://t.me/cit_gov` | `telegram` | Public preview работает |
+| `tg-rfrit` | РФРИТ | `https://t.me/rfrit` | `telegram` | Public preview работает |
+| `tg-grants-for-business` | Гранты для ИТ | `https://t.me/grantsforbussines` | `telegram` | Public preview работает |
+| `tg-cio-channel` | CIO: канал IT-руководителей | `https://t.me/cio_channel` | `telegram` | Public preview работает |
+| `tg-rustorgpred` | Торгпред — тендеры и закупки | `https://t.me/rustorgpred` | `telegram` | Public preview работает |
+| `tg-government-rus` | Правительство РФ — сводки | `https://t.me/government_rus` | `telegram` | Public preview работает |
+| `tg-arperf` | АРПЭ — новости | `https://t.me/arperf` | `telegram` | Public preview работает |
+| `tg-icipr` | ЦИПР — новости и анонсы мероприятий | `https://t.me/icipr` | `telegram` | Public preview работает |
 | `digest-arpp-legal` | Правовой комитет АРПП — дайджесты ИРИ и ЭБР | Не предоставлен | Возможно `file`/email/archive | Блокирован отсутствием URL/канала доставки |
-| `tg-arppsoft` | АРПП — новости | `https://t.me/arppsoft` | `telegram` / demo `telegram_archive` | Не проверен |
-| `web-vedomosti` | Ведомости | `https://www.vedomosti.ru` | `rss`, если найден официальный feed | Не проверен |
-| `web-kommersant` | Коммерсант | `https://www.kommersant.ru` | `rss`, если найден официальный feed | Не проверен |
-| `web-cableman` | Кабельщик | `https://www.cableman.ru/` | `rss`, если найден официальный feed | Не проверен |
-| `web-telesputnik` | Телеспутник | `https://telesputnik.ru` | `rss`, если найден официальный feed | Не проверен |
+| `tg-arppsoft` | АРПП — новости | `https://t.me/arppsoft` | `telegram` | Public preview работает |
+| `rss-vedomosti-tech` | Ведомости — технологии | `https://www.vedomosti.ru/rss/rubric/technology` | `rss` | Live collection работает; часто только заголовок |
+| `rss-kommersant-main` | Коммерсант — главное | `https://www.kommersant.ru/rss/main.xml` | `rss` | Live collection работает |
+| `rss-cableman` | Кабельщик | `https://www.cableman.ru/rss.xml` | `rss` | Live collection работает |
+| `rss-telesputnik` | Телеспутник | `https://telesputnik.ru/rss/` | `rss` | Live collection работает |
 
 Итого по предоставленному списку:
 
@@ -35,8 +35,8 @@ intake.
 - 4 сайта;
 - 1 источник без URL/канала доставки.
 
-Ни один из них пока не добавляется в `data/seed/`: seed относится к protected
-context и меняется только отдельным согласованным PR.
+13 подключаемых записей хранятся отдельно в `data/live/sources.json`; канонический
+offline seed не меняется.
 
 ## 2. Intake перед разработкой адаптера
 
@@ -65,8 +65,8 @@ context и меняется только отдельным согласован
 
 1. Для demo использовать обезличенный сохранённый export/archive и тип
    `telegram_archive`.
-2. Для live определить согласованный доступ: официальный bot/client API либо другой
-   разрешённый механизм.
+2. Текущий live MVP читает только публичную web-preview `t.me/s/<channel>` без
+   пользовательской сессии и Telegram-секретов.
 3. API ID/hash, session и иные секреты брать только из окружения и не коммитить.
 4. В качестве `external_id` сохранять устойчивый ID сообщения.
 5. Canonical URL строить как ссылку на конкретное сообщение, если она доступна.
@@ -125,9 +125,8 @@ Adapter должен иметь ограничение частоты, timeout, 
    ЭБР»?
 2. Какие Telegram-каналы считаются официальными именно для подтверждения факта, но
    всё равно не заменяют официальный документ НПА?
-3. Есть ли согласованный Telegram API/client account для live-сбора?
+3. Нужен ли официальный Telegram API/client account вместо хрупкой public preview?
 4. Нужен полный архив или только сообщения после даты запуска?
 5. Какие рубрики четырёх сайтов входят в мониторинг, чтобы не собирать весь поток?
 6. Как обрабатывать paywall/частичный текст: metadata-only, пропуск или лицензированный
    доступ?
-

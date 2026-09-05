@@ -7,6 +7,8 @@ from typing import Any, Protocol
 from backend.app.config import (
     allow_hf_download,
     embedding_enabled,
+    get_embedding_batch_size,
+    get_embedding_max_input_chars,
     get_embedding_model_id,
     get_hf_cache_dir,
 )
@@ -32,6 +34,8 @@ class HuggingFaceEmbedder:
         cache_dir: Path | None = None,
         download_allowed: bool | None = None,
         model: Any | None = None,
+        max_input_chars: int | None = None,
+        batch_size: int | None = None,
     ) -> None:
         self.model_id = model_id or get_embedding_model_id()
         self.cache_dir = cache_dir or get_hf_cache_dir()
@@ -39,14 +43,18 @@ class HuggingFaceEmbedder:
             allow_hf_download() if download_allowed is None else download_allowed
         )
         self._model = model
+        self.max_input_chars = max_input_chars or get_embedding_max_input_chars()
+        self.batch_size = batch_size or get_embedding_batch_size()
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         model = self._model or self._load_model()
         try:
             vectors = model.encode(
-                texts,
+                [text[: self.max_input_chars] for text in texts],
                 normalize_embeddings=True,
                 convert_to_numpy=True,
+                batch_size=self.batch_size,
+                show_progress_bar=False,
             )
             return vectors.tolist()
         except Exception as error:

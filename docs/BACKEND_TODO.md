@@ -1,7 +1,7 @@
 # Backend: архитектура и проверяемый TODO
 
-Статус: **рабочий план, не protected context**  
-Дата: 2026-09-04  
+Статус: **рабочий план, не protected context**
+Дата: 2026-09-05
 Ветка: `feat/content-pipeline`
 
 Полная картина системы, включая LLM и фактический frontend:
@@ -9,7 +9,7 @@
 
 Реестр и intake источников: [`SOURCE_INVENTORY.md`](SOURCE_INVENTORY.md).
 
-Этот файл декомпозирует реализацию зафиксированного API v0.2. Он не заменяет
+Этот файл декомпозирует реализацию зафиксированного API v0.4.0. Он не заменяет
 `AGENTS.md`, `rules.md`, `README.md` или `contracts/openapi.yaml`.
 
 ## 1. Источники истины и границы
@@ -25,10 +25,11 @@
 
 **Факты:**
 
-- backend A1–A8.1 реализован в рабочей ветке `feat/content-pipeline`;
-- контракт содержит 17 HTTP-операций;
-- frontend использует read API публикаций, источников, истории и кейсов, а также
-  контрактные write-операции для решений, связей publication-case и lifecycle events;
+- backend A1–A9 и основной human-in-the-loop workflow реализованы в рабочей ветке
+  `feat/content-pipeline`;
+- контракт содержит 22 HTTP-операции;
+- frontend использует read/write API публикаций, источников, анализов, решений,
+  semantic duplicate review и lifecycle НПА;
 - offline seed содержит 5 источников, 10 публикаций и 10 replay-анализов;
 - `scripts/seed_demo.py` уже создаёт SQLite-таблицы `sources`, `publications` и
   `analysis_versions` и повторно импортирует данные без дублей;
@@ -36,9 +37,9 @@
 - `README.md`, `rules.md`, `AGENTS.md`, `contracts/`, примеры и seed относятся к
   защищённому контексту в объёме, указанном в `AGENTS.md` и `rules.md`.
 
-**Вывод:** базовый вертикальный срез health → seed → read API → frontend и
-технический eval уже реализованы; следующий приоритет — завершить live intake,
-затем W1/W2 и независимый quality benchmark.
+**Вывод:** базовый вертикальный срез и live intake реализованы; следующий приоритет —
+полнотекстовая загрузка коротких RSS-анонсов, независимая разметка качества AI и
+дублей, ускорение массового backfill embeddings и развёртывание demo-сервера.
 
 **Владение:** по уточнению пользователя весь backend, включая задачи `W`, относится
 к текущему backend-контуру. Владелец frontend отвечает за UI; изменения контракта
@@ -56,8 +57,8 @@ Backend должен принимать материалы минимум из �
 - СМИ и отраслевые сайты: сначала официальный RSS/API, затем согласованный HTML
   parser, если RSS/API нет;
 - нормативно-правовые источники: официальные сайты регуляторов и публикаций;
-- Telegram-каналы и дайджесты: live-доступ после согласования либо сохранённый
-  archive/file для воспроизводимого demo.
+- Telegram-каналы и дайджесты: публичный preview без пользовательской сессии либо
+  сохранённый archive/file для воспроизводимого demo.
 
 Переданный пользователем backlog содержит 14 кандидатов и ведётся в
 `SOURCE_INVENTORY.md`.
@@ -70,10 +71,11 @@ Backend должен принимать материалы минимум из �
 4. Преобразовать материал в общий `CollectorResult`.
 5. Нормализовать пробелы, URL, дату и текст.
 6. Вычислить `content_hash`.
-7. Проверить дубли по external ID, URL и hash.
+7. Отдельно проверить повторный polling по external ID/URL и совпадение текста по hash.
 8. В одной транзакции сохранить только новые `Publication`.
 9. Записать `last_checked_at`, `last_success_at` или `last_error` источника.
-10. Вернуть/сохранить измеримый результат сбора: найдено, создано, дубли, ошибки.
+10. Вернуть/сохранить измеримый результат сбора: получено, создано, уже было по
+    ID/URL, совпало по тексту, semantic candidates, ошибки.
 
 HTTP-точки действующего контракта:
 
@@ -109,16 +111,17 @@ URL, published time, нормализованным content и SHA-256.
 3. Передать модели только нужные metadata и исходный текст.
 4. Получить structured JSON.
 5. Проверить Pydantic schema и допустимые enum.
-6. Проверить, что evidence quote встречается в исходном тексте.
-7. Обычным кодом вычислить score и proposed priority.
-8. Обычным кодом применить hard flags и `needs_review`.
-9. Создать новую `AnalysisVersion`; предыдущую не менять.
-10. Вернуть `201 AnalysisVersion`.
+6. Проверить 3-5 предложений и сжатие исходников от 500 символов.
+7. Проверить, что evidence quote встречается в исходном тексте.
+8. Обычным кодом вычислить `importance_score` и proposed priority.
+9. Обычным кодом применить hard signals и `needs_review`.
+10. Создать новую `AnalysisVersion`; предыдущую не менять.
+11. Вернуть `201 AnalysisVersion`.
 
 HTTP-точка: `POST /api/publications/{publication_id}/analyses`.
 
 Replay обязателен для demo и тестов. Live LLM необходим для реального продукта, но
-подключается после утверждения prompt, provider, формулы score и eval-протокола.
+подключается после утверждения prompt, provider, формулы важности и eval-протокола.
 
 ### 1.3. Единая лента, поиск и API для frontend
 
@@ -157,8 +160,8 @@ HTTP-точки:
 
 ### 1.4. Управление источниками и публикациями
 
-Это обязательный функциональный блок, но действующий контракт покрывает его не
-полностью.
+Это обязательный функциональный блок. Ручное управление публикациями реализовано;
+для источников остаётся решение об archive/delete lifecycle.
 
 Статус frontend-части B6: **реализована**. `/sources` поддерживает
 создание, изменение name/URL, паузу/возобновление и ручной сбор
@@ -171,14 +174,9 @@ HTTP-точки:
 - `enabled=false` — поставить источник на паузу без потери его публикаций;
 - refresh одного источника.
 
-Чего нет в действующем OpenAPI:
-
-- hard delete/archive источника;
-- ручное создание публикации;
-- исправление заголовка;
-- редактирование тегов;
-- скрытие/возврат публикации в ленту;
-- отдельное сохранение ручной версии саммари/категории/приоритета.
+В действующем OpenAPI уже есть ручное создание публикации, append-only исправление
+заголовка/тегов, soft-hide/restore и отдельное решение специалиста для
+summary/category/priority. Не зафиксирован только hard delete/archive источника.
 
 Правильная модель ручной правки:
 
@@ -190,8 +188,9 @@ HTTP-точки:
 Скрытие                        → soft visibility state/event
 ```
 
-**Вывод:** обязательные write-функции публикации сначала проектируются в отдельном
-согласованном context-PR. Реализация скрытых endpoint до обновления OpenAPI запрещена.
+**Вывод:** обязательные write-функции публикации реализованы без перезаписи исходной
+`Publication` и `AnalysisVersion`. Новые source lifecycle endpoint нельзя добавлять
+до обновления OpenAPI.
 
 ### 1.5. Решение специалиста и аудит
 
@@ -275,22 +274,24 @@ Backend должен обеспечивать:
 
 | Требование | Backend-часть | Контракт | Frontend сейчас |
 | --- | --- | --- | --- |
-| Три категории источников | A8 collectors + inventory | Частично: типы есть, HTML-type нет | Показывает типы |
+| Три категории источников | A8 collectors + inventory | RSS и Telegram live; regulator HTML пока нет | Показывает типы |
 | Саммари 3–5 предложений | A6 Live/ReplayAnalyzer | `summary` есть, длина не ограничена | Показывает latest summary |
 | Сущности | A6 structured output | `entities` есть | Показаны в карточке анализа |
 | Категоризация | A6 | Есть | Фильтр и badge есть |
 | Приоритизация | A7 deterministic scorer | Есть proposed/final split | Фильтр и badge proposed есть |
-| Поиск | A4 | Есть, но mentions tags без поля tags | Работает по mock |
-| Фильтр по дате | A4 | Есть | Контрола пока нет |
+| Поиск | A4 | Есть, включая title/content/tags | Работает через API |
+| Фильтр по дате | A4 | Есть | Два date-контрола в ленте |
 | Оригинал | Publication.original_url | Есть | Ссылка работает |
-| Добавление источника | A5 | Есть | Формы пока нет |
-| Редактирование источника | A5 | Есть | Формы пока нет |
-| Удаление/скрытие источника | C2 | Только `enabled=false` | Управления нет |
-| Ручное добавление публикации | C1 | Нет | Нет |
-| Редактирование публикации/тегов | C1 + W1 | Частично только final decision | Нет |
-| Скрытие публикации | C1 | Нет | Нет |
+| Добавление источника | A5 | Есть | Форма есть |
+| Редактирование источника | A5 | Есть | Форма есть |
+| Удаление/скрытие источника | C2 | Soft-disable через `enabled=false` | Управление есть |
+| Ручное добавление публикации | C1 | Есть | Диалог в ленте |
+| Редактирование публикации/тегов | C1 + W1 | Append-only revision | Редактор в карточке |
+| Скрытие публикации | C1 | Soft-hide/restore | Управление в карточке |
 | Решение специалиста | W1 | Есть | Форма, latest decision и история есть |
 | История НПА | W2 | Есть | Timeline, связанные публикации и создание официального события |
+| Проверка semantic duplicates | A8 | Очередь + append-only review | Страница `/duplicates` |
+| Telegram Mini App startup | C5 | Backend проверяет подпись `initData` | Runtime adapter и auth startup |
 
 ## 2. Архитектурное решение
 
@@ -384,8 +385,11 @@ backend/
 | --- | --- | --- |
 | `sources` | Настройка источника и состояние последнего сбора | уникальный `id`; URL валидируется на API-границе |
 | `publications` | Неизменяемый результат импорта/сбора | unique `(source_id, external_id)`, canonical URL и `content_hash` |
+| `publication_revisions` | Ручные title/tags/visibility | unique `(publication_id, version)`; append-only |
 | `analysis_versions` | Версии AI/replay-анализа | unique `(publication_id, version)`; старые версии не обновляются |
 | `duplicate_candidates` | Лучшее semantic-сравнение новой публикации для ручной разметки | unique `(publication_id, candidate_publication_id, model)`; ничего не удаляет |
+| `duplicate_reviews` | Версии человеческого вердикта по паре | unique `(candidate_id, version)`; append-only |
+| `publication_embeddings` | Локальный кэш вектора для resumable backfill | primary key `(publication_id, model)`; совпадение `content_hash` обязательно |
 | `specialist_decisions` | Версии решений специалиста | unique `(publication_id, version)`; ссылка на существующий анализ |
 | `regulatory_cases` | Текущая проекция карточки НПА | уникальный `id`; стадия меняется только вместе с новым событием |
 | `regulatory_case_publications` | Связь M:N кейса и публикации | unique `(case_id, publication_id)` |
@@ -427,17 +431,18 @@ backend/
 1. загрузить публикацию и вычислить/проверить `input_hash`;
 2. получить строго структурированный результат analyzer;
 3. проверить JSON/Pydantic-схему;
-4. посчитать `score` обычным кодом;
-5. применить hard flags и выставить `needs_review`;
+4. посчитать `importance_score` обычным кодом;
+5. применить hard signals и выставить `needs_review`;
 6. сохранить новую неизменяемую `AnalysisVersion`;
 7. вернуть созданную версию.
 
-**Временное решение MVP, разрешённое пользователем 2026-09-04:** live-анализ
-использует сумму `K1..K6` в диапазоне 0–18. Границы: `low = 0..4`,
-`medium = 5..9`, `high = 10..14`, `critical = 15..18`. Любой `H1..H4`
-повышает предложение минимум до `high`, но не понижает `critical` и не создаёт
-`final_priority`. Replay продолжает возвращать сохранённые значения seed, поэтому
-этот временный scorer не переписывает существующий demo-набор.
+**Решение MVP, обновлённое пользователем 2026-09-05:** live-анализ использует шесть
+именованных критериев и детерминированный `importance_score` 0–18. Границы:
+`low = 0..4`, `medium = 5..9`, `high = 10..14`, `critical = 15..18`. Любой
+именованный hard signal повышает предложение минимум до `high`, но не понижает
+`critical` и не создаёт `final_priority`. `null` не считается нулём: индекс и
+приоритет остаются неизвестными, а карточка требует проверки. Полная шкала описана в
+`docs/IMPORTANCE_SCORING.md`.
 
 ### 2.8. Чтение и поиск
 
@@ -503,31 +508,32 @@ flowchart TD
 - [ ] **G3. Подтвердить Python baseline команды/CI.**
   DoD: одна поддерживаемая версия зафиксирована командой; зависимости устанавливаются
   и тесты проходят на ней.
-- [x] **G4. Зафиксировать правило score/priority до live analyzer.**
-  Временная MVP-методика разрешена пользователем 2026-09-04: сумма K1–K6,
-  thresholds 0/5/10/15, любой H1–H4 повышает предложение минимум до high.
-  Полная методика K/N и причины по каждому критерию остаются в C3.
+- [x] **G4. Зафиксировать правило importance/priority до live analyzer.**
+  MVP-методика обновлена 2026-09-05: шесть именованных факторов, границы
+  0/5/10/15 и четыре именованных hard signal. Неизвестное значение не маскируется
+  нулём.
 
 ### C — отдельные изменения protected context
 
 Эти пункты не смешиваются с реализацией A/W и требуют согласования обоих инженерных
 контуров по `rules.md`.
 
-- [ ] **C1. Полный lifecycle ручной публикации.**
+- [x] **C1. Полный lifecycle ручной публикации.**
   Спроектировать OpenAPI для ручного создания, исправления display title/tags,
   soft-hide/restore и аудируемой ручной версии данных. Исходную Publication и
   AnalysisVersion не перезаписывать.
-  DoD: согласованы endpoints, request/response schemas, ошибки, примеры, seed и
-  поведение frontend; сделан отдельный `context:` PR.
+  Реализованы `POST/PATCH /api/publications`, теги, soft-hide/restore и append-only
+  `PublicationRevision`; контракт, frontend types/mocks и UI синхронизированы.
 - [ ] **C2. Полное управление источниками.**
   Решить, нужен ли DELETE или достаточно archive/disabled; добавить тип
   `website/html`, если для переданных сайтов нет RSS/API; определить внутреннюю
   конфигурацию adapter без секретов в API/БД.
   DoD: source lifecycle и SourceType однозначны, contract/examples синхронизированы.
-- [ ] **C3. AI criteria и неизвестные значения.**
-  Согласовать K1–K6, N1–N4/H1–H4, representation `unknown`, score thresholds и
-  hard flags, а также отдельное основание для каждого критерия.
+- [x] **C3. AI criteria и неизвестные значения.**
+  Технические K/H-коды заменены понятными полями; `null`, пороги и hard signals
+  одинаково выражены в prompt `analysis-v3`, scorer, OpenAPI и frontend.
   DoD: prompt output, deterministic scorer и OpenAPI выражают одну методику.
+  Отдельные основания на каждый фактор и независимая разметка остаются улучшением.
 - [ ] **C4. Demo workflow data и сервисные API.**
   Согласовать seed для `case-001`, lifecycle и specialist decision; решить, нужны ли
   job status и digest endpoints.
@@ -610,7 +616,7 @@ OpenAPI. Проверка backend: 34 tests passed; отдельно прове�
 связка без изменения UI-кода — 10 публикаций, фильтр `telegram_archive` (2 записи),
 поиск (1 запись), detail публикации и 5 источников. TypeScript typecheck и production
 build frontend проходят. Обнаруженная тогда несовместимость realm `AbortSignal`
-между jsdom и Node/MSW устранена в test-only setup при стабилизации API v0.2;
+между jsdom и Node/MSW устранена в test-only setup при стабилизации API v0.3;
 frontend suite теперь проходит 19/19.
 
 ### A5 — управление источниками
@@ -631,7 +637,7 @@ DoD: текущие source-операции контракта реализов�
 получает серверный `id` и `is_demo=false`; PATCH принимает только `name`, `url` и
 `enabled`, запрещает пустой объект, `null` и лишние поля. Все записи выполняются в
 транзакциях; отдельный тест подтверждает rollback при конфликте primary key.
-Финальная семантика v0.2 после A8: `collectSource` выполняет сбор синхронно,
+Финальная семантика v0.4.0 после A8: `collectSource` выполняет сбор синхронно,
 фиксирует `last_checked_at`, `last_success_at`/`last_error` и возвращает измеримый
 `CollectionReport`. Это заменило промежуточный `202 accepted` без status endpoint.
 
@@ -659,29 +665,30 @@ structured output валидируется, а каждая `evidence.quote` п�
 текста. Невалидный ответ получает один retry и не оставляет частичной записи.
 `LiveLLMAnalyzer` лениво использует официальный Hugging Face
 `image-text-to-text` pipeline для `Qwen/Qwen3.5-0.8B`; cache находится вне Git,
-download по умолчанию запрещён. Реальные веса около 1.75 GB не скачивались и inference
-не объявляется проверенным. Проверка A1–A6: 58 tests passed; live HTTP-smoke подтвердил
-201 replay, latest version 2 и controlled 422 без создания версии 3.
+download по умолчанию запрещён. Целевые веса позже были скачаны в ignored cache;
+измеренный CPU smoke на одной публикации завершился timeout 30 секунд и не создал
+анализа. Это подтверждает controlled failure, а не качество inference. Историческая
+проверка A1–A6: 58 tests passed; live HTTP-smoke подтвердил 201 replay, latest
+version 2 и controlled 422 без создания версии 3.
 
-### A7 — детерминированный score
+### A7 — детерминированный индекс важности
 
 Зависимости: A6 и G4.
 
-- [x] Реализовать чистую функцию criteria → score → proposed priority.
-- [x] Отделить hard flags от итогового человеческого решения.
-- [x] Добавить boundary-тесты thresholds и каждой hard flag.
+- [x] Реализовать чистую функцию criteria → importance score → proposed priority.
+- [x] Отделить hard signals от итогового человеческого решения.
+- [x] Добавить boundary-тесты thresholds и каждого hard signal.
 - [x] Проверить, что `critical`/`high` не понижаются неявной логикой.
 
-DoD: один и тот же ввод всегда даёт один результат; LLM не вычисляет итоговый score;
+DoD: один и тот же ввод всегда даёт один результат; LLM не вычисляет итоговый индекс;
 финальный приоритет не записывается.
 
-Статус 2026-09-04: **реализован и подтверждён пользователем**. Чистая
-функция `score_criteria` считает сумму K1–K6 и применяет временные границы
-0/5/10/15. Каждый H1–H4 повышает только AI-предложение минимум до `high`;
-`critical` не понижается. Scorer подключён только после `live_llm`, а replay
-сохранён без изменений. Prompt `analysis-v2` объясняет модели смысл K1–K6 и H1–H4,
-но итоговый score модель не вычисляет. Проверка A1–A7: 72 tests passed; два предупреждения
-принадлежат зависимостям FastAPI/Starlette.
+Статус 2026-09-05: **реализован и обновлён по запросу пользователя**. Чистая функция
+`score_criteria` считает `importance_score` по шести именованным факторам и применяет
+границы 0/5/10/15. Каждый именованный hard signal повышает только AI-предложение
+минимум до `high`; `critical` не понижается. Неизвестный фактор даёт `null`,
+`unknown` и обязательную проверку. Prompt `analysis-v3`, API v0.4.0 и frontend
+используют те же названия.
 
 ### A8 — сбор и дедупликация
 
@@ -693,16 +700,21 @@ DoD: один и тот же ввод всегда даёт один резул�
 - [x] После exact ID/URL/hash считать cosine similarity только для near-duplicate
   кандидатов.
 - [x] До валидации threshold не удалять semantic candidates автоматически.
-- [ ] Собрать размеченные пары duplicate/related/different и сохранить метрики выбора
-  threshold как JSON/CSV.
-- [ ] Провести intake 14 переданных пользователем кандидатов из `SOURCE_INVENTORY.md`.
+- [ ] Собрать независимые размеченные пары duplicate/related/different и сохранить
+  метрики выбора production threshold как JSON/CSV.
+- [ ] После разметки проверить каскад: embedding top-k retrieval → структурированный
+  Qwen verdict → подтверждение человека; не вызывать генеративную модель для
+  `already_seen` и не удалять пары автоматически.
+- [x] Подключить 13 источников с URL из 14 переданных кандидатов; один кандидат без
+  URL остаётся открытым.
 - [ ] Получить URL/канал доставки для дайджестов Правового комитета АРПП.
 - [x] Сначала реализовать `seed/file` adapter для полностью offline smoke.
 - [x] Реализовать `collectEnabledSources` для enabled sources.
 - [x] Реализовать `collectSource` через тот же service-path.
 - [x] Добавить один RSS adapter только после offline теста.
 - [x] Для RSS сохранить fixture и parser test до сетевого запуска.
-- [ ] Регулятор и Telegram оставить адаптерами с replay/archive fallback.
+- [x] Реализовать публичный Telegram preview adapter с archive/file fallback.
+- [ ] Реализовать отдельный regulator/full-text HTML adapter.
 - [x] Не использовать Telegram-секреты или пользовательскую сессию без отдельного
   согласованного способа доступа.
 - [x] Проверить три уровня дедупликации и повторный запуск.
@@ -711,24 +723,30 @@ DoD реализованного среза: endpoints возвращают за
 повторный сбор не создаёт дублей; ошибка одного источника сохраняется в его статусе
 и не теряет успешные результаты остальных источников.
 
-Статус 2026-09-04: **первый вертикальный срез реализован и технически
-стабилизирован**. `collectSource` и `collectEnabledSources` выполняются синхронно и
+Статус 2026-09-05: **live-срез реализован и измерен**. `collectSource` и
+`collectEnabledSources` выполняются синхронно и
 возвращают общий отчёт с итогами и ошибкой по каждому источнику. Один service-path
-читает строгий offline JSON или RSS 2.0, нормализует URL/текст и проверяет exact
-duplicate в порядке
-`(source_id, external_id)` → canonical URL → SHA-256. Ошибка одного source
+читает строгий offline JSON или RSS 2.0, нормализует URL/текст и проверяет
+`already_seen` по `(source_id, external_id)` → canonical URL, затем
+`content_duplicates` по SHA-256. Ошибка одного source
 записывается в `last_error`, успешные источники сохраняются независимо.
 
 Optional `Embedder` по умолчанию выключен; ленивый adapter использует
 `Qwen/Qwen3-Embedding-0.6B` через Sentence Transformers и общий HF cache вне Git.
 При включении для каждой новой не-exact публикации сохраняется только её ближайшая
 пара со статусом `unreviewed`; публикации не удаляются. Threshold намеренно не
-выбран до размеченных пар. Offline fixture, RSS parser и fake embeddings проверяют
-ветки без сети и скачивания весов. В API v0.2 также финализированы noun-based пути,
-схемы `Publication`/`AnalysisVersion` и frontend-типы. Техническая проверка
-стабилизации: 92 backend tests и 19 frontend tests; typecheck, lint и production
-build проходят. Для завершения A8 остаются размеченные
-пары и threshold-отчёт, intake live-источников, regulator/Telegram adapters и URL
+выбран до независимой разметки. Synthetic smoke показывает разделение трёх заранее
+сконструированных классов, но не разрешает quality claim. Live backfill на 20
+публикациях создал 19 кандидатов и повторился идемпотентно. После этого добавлен
+пакетный SQLite-кэш embeddings, чтобы полный backfill сохранял прогресс и повторно
+считал только отсутствующие или устаревшие по `content_hash` векторы. Полный live
+прогон обработал 311 публикаций за 201.822 секунды, создал 270 недостающих пар;
+немедленный повтор создал 0 пар за 0.009 секунды. Повторная диагностика с раздельными
+счётчиками получила 312 записей: 61 публикация создана, 250 уже были известны по
+ID/URL и 1 совпала только по тексту. Старое число `311 exact duplicates` смешивало
+две разные причины пропуска и больше не используется как самостоятельная метрика.
+Для завершения A8 остаются
+независимо размеченные пары, production threshold, regulator/full-text adapter и URL
 Правового комитета АРПП.
 
 ### A9 — технический eval
@@ -801,30 +819,39 @@ DoD: backend не вводит скрытый незафиксированный
 
 Статус B7: `/digest` использует только действующие read API, формирует клиентский
 preview по `all_available_data` и поддерживает скачивание JSON/Markdown одного снимка.
-Серверное хранение версий, email и Telegram не реализованы. Append-only аудит охватывает
-только `SpecialistDecision` и `LifecycleEvent`; расширение аудита требует OpenAPI-изменения.
+Серверное хранение версий дайджеста, email и Telegram-рассылка не реализованы.
+Append-only аудит охватывает `PublicationRevision`, `AnalysisVersion`,
+`SpecialistDecision`, `DuplicateReview` и `LifecycleEvent`.
 
 ### I1 — интеграция и demo regression
 
 Зависимости: A4, A6, A8, W1, W2.
 
 - [ ] Чистая БД → seed → backend → frontend.
-- [ ] Smoke всех 17 операций по контракту.
-- [ ] Проверить один сценарий: лента → публикация → анализ → решение → история.
-- [ ] Проверить один сценарий НПА: кейс → link публикации → новое событие → timeline.
-- [ ] Дважды выполнить seed/collection и проверить отсутствие дублей.
+- [ ] Smoke всех 22 операций по контракту.
+- [x] Проверить один сценарий: лента → публикация → анализ → решение → история.
+- [x] Проверить один сценарий НПА: кейс → link публикации → новое событие → timeline.
+- [x] Дважды выполнить seed/collection и проверить отсутствие exact-дублей.
 - [ ] Проверить `git status`: нет SQLite, `.env`, логов и временных файлов.
 
 DoD: сквозной сценарий воспроизводится с нуля по зафиксированным командам; падение
 модуля блокирует его интеграцию.
+
+Визуальный smoke 2026-09-05 на real API подтвердил оба сценария. В live SQLite
+идемпотентно добавлен seed, сохранено решение для `pub-001`, публикация связана с
+`case-001`, а официальный переход `draft → introduced` появился в timeline и
+клиентском дайджесте. Общий сбор из `/sources` успешно обработал 13/13 live-источников.
 
 ## 5. Покрытие действующего OpenAPI
 
 | Operation ID | Метод и путь | Задача | Владелец по `AGENTS.md` |
 | --- | --- | --- | --- |
 | `getHealth` | `GET /api/health` | A1 | Backend |
+| `authenticateTelegram` | `POST /api/auth/telegram` | C5 | Backend |
 | `listPublications` | `GET /api/publications` | A4 | Backend |
+| `createPublication` | `POST /api/publications` | C1 | Backend |
 | `getPublication` | `GET /api/publications/{publication_id}` | A4 | Backend |
+| `updatePublication` | `PATCH /api/publications/{publication_id}` | C1 | Backend |
 | `createPublicationAnalysis` | `POST /api/publications/{publication_id}/analyses` | A6–A7 | Backend |
 | `createSpecialistDecision` | `POST /api/publications/{publication_id}/decisions` | W1 | Backend |
 | `getPublicationHistory` | `GET /api/publications/{publication_id}/history` | W1 | Backend |
@@ -834,6 +861,8 @@ DoD: сквозной сценарий воспроизводится с нул�
 | `collectSource` | `POST /api/sources/{source_id}/collections` | A5/A8 | Backend |
 | `importDemoSeed` | `POST /api/demo/seed` | A3 | Backend |
 | `collectEnabledSources` | `POST /api/collections` | A8 | Backend |
+| `listDuplicateCandidates` | `GET /api/duplicate-candidates` | A8 | Backend |
+| `createDuplicateReview` | `POST /api/duplicate-candidates/{candidate_id}/reviews` | A8 | Backend |
 | `listRegulatoryCases` | `GET /api/regulatory-cases` | W2 | Backend |
 | `createRegulatoryCase` | `POST /api/regulatory-cases` | W2 | Backend |
 | `getRegulatoryCase` | `GET /api/regulatory-cases/{case_id}` | W2 | Backend |
@@ -842,35 +871,35 @@ DoD: сквозной сценарий воспроизводится с нул�
 
 ## 6. Контрактные и продуктовые пробелы
 
-Это оставшиеся пробелы после синхронизации API v0.2.
+Это оставшиеся пробелы после синхронизации API v0.4.0.
 
-1. **Факт:** кейс требует ручное создание, редактирование и скрытие публикаций, но
-   текущий OpenAPI не содержит `POST/PATCH/DELETE /api/publications`.
-2. **Факт:** кейс требует удаление/скрытие источника; контракт позволяет только
+1. **Факт:** ручное создание, редактирование и soft-hide/restore публикаций уже
+   реализованы через `POST/PATCH /api/publications` и append-only revisions.
+2. **Факт:** кейс требует удаление/скрытие источника; контракт позволяет
    `PATCH enabled=false`, но не содержит DELETE.
 3. **Факт:** `case-001` уже входит в seed; lifecycle events и specialist
    decisions намеренно остаются runtime append-only данными.
-4. **Факт:** продуктовые материалы называют критерии новостей N1–N4, а OpenAPI
-   требует H1–H4; формула и thresholds score в контракте не описаны.
+4. **Факт:** API v0.4.0, prompt и интерфейс используют одни именованные критерии;
+   формула и шкала описаны в `docs/IMPORTANCE_SCORING.md`.
 5. **Факт:** digest endpoint в OpenAPI отсутствует; B7 реализован как клиентская
    производная с JSON/Markdown preview и download без серверного хранения версий.
 6. **Решено в B4:** матрица lifecycle-переходов зафиксирована в
    protected context и проверяется чистой функцией backend.
-7. **Факт:** описание query-поиска включает tags, но `Publication` не содержит
-    поля tags; ручное редактирование тегов также отсутствует в текущем контракте.
-8. **Факт:** безопасный AI-контур должен уметь сохранить `unknown` при нехватке
-    данных, но `Criteria` требует все K1–K6 как integer и H1–H4 как boolean.
-9. **Факт:** переданы четыре сайта, для которых официальный RSS/API ещё не проверен,
-    а enum `SourceType` не содержит отдельного `website/html`.
+7. **Факт:** `Publication` содержит tags, поиск их индексирует, ручное редактирование
+    сохраняет новую append-only revision.
+8. **Факт:** безопасный AI-контур сохраняет неизвестный фактор как `null`, не
+    превращает его в ноль и отправляет карточку на проверку.
+9. **Факт:** для четырёх отраслевых сайтов подключены публичные RSS; часть RSS
+    отдаёт только короткий анонс, поэтому полнотекстовый enrichment ещё нужен.
 10. **Открытый вопрос:** у источника «Правовой комитет АРПП / дайджесты ИРИ и ЭБР»
     не предоставлен URL или канал доставки.
-11. **Открытый вопрос:** не согласованы механизм live-доступа к Telegram и глубина
-    загрузки истории.
-12. **Факт:** `Criteria` хранит значения, а `Evidence` — общие claim/quote; схема не
-    связывает отдельное reason с конкретным K/N/H-критерием.
+11. **Факт:** live Telegram сейчас использует публичный preview без пользовательской
+    сессии; глубина истории ограничена тем, что отдаёт публичная страница.
+12. **Факт:** `Criteria` хранит значения, а `Evidence` — общие claim/quote; схема пока
+    не связывает отдельное reason с каждым именованным критерием.
 
 **Вывод:** эти пункты не ломают реализованный вертикальный срез, но блокируют
-утверждение, что весь кейс и все 17 операций полностью готовы.
+утверждение о полном качестве AI, полнотекстовом покрытии и production readiness.
 
 ## 7. Стратегия проверок
 
@@ -901,12 +930,12 @@ python3 -m pytest backend/tests
 
 - [ ] backend запускается канонической командой из README;
 - [ ] все реализуемые ответы и ошибки соответствуют OpenAPI;
-- [ ] все 17 операций либо проходят smoke, либо явно заблокированы согласованием;
+- [ ] все 22 операции либо проходят smoke, либо явно заблокированы согласованием;
 - [ ] seed дважды создаёт ровно 5 источников, 10 публикаций и 10 анализов;
 - [ ] frontend работает на реальном API без изменения UI-кода, кроме URL окружения;
 - [ ] анализ и решение специалиста раздельны и версионируются;
 - [ ] lifecycle append-only и принимает подтверждение только из официального источника;
-- [ ] score детерминирован и не выдаётся за решение специалиста;
+- [ ] `importance_score` детерминирован и не выдаётся за решение специалиста;
 - [ ] тесты изменённых модулей проходят;
 - [ ] в репозитории нет секретов, SQLite и временных артефактов;
 - [x] protected context синхронизирован в явно согласованном пользователем объёме;
@@ -916,7 +945,7 @@ python3 -m pytest backend/tests
 
 - [x] OpenAPI успешно парсится как YAML.
 - [x] Все operationId из OpenAPI встречаются ровно в матрице покрытия.
-- [x] Все 17 операций назначены задаче и владельцу.
+- [x] Все 22 операции назначены задаче и владельцу.
 - [x] JSON seed валиден, а текущий seed импортируется дважды без дублей.
 - [x] В плане явно отражены 10 жёстких инвариантов из `AGENTS.md`.
 - [x] Protected context изменён только в явно согласованном пользователем объёме.

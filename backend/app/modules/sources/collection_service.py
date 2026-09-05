@@ -38,6 +38,8 @@ from scripts.seed_core import content_hash
 class CollectionStats:
     collected: int
     created: int
+    already_seen: int
+    content_duplicates: int
     exact_duplicates: int
     semantic_candidates: int
 
@@ -80,14 +82,21 @@ def collect_source(
     return _collection_report([result], started_at)
 
 
-def collect_enabled_sources(session: Session) -> CollectionReport:
+def collect_enabled_sources(
+    session: Session,
+    *,
+    include_demo: bool = False,
+) -> CollectionReport:
     started_at = datetime.now(UTC)
     with session.begin():
-        source_ids = list(
-            session.scalars(
-                select(Source.id).where(Source.enabled == 1).order_by(Source.id)
-            )
+        rows = list(
+            session.scalars(select(Source).where(Source.enabled == 1).order_by(Source.id))
         )
+        source_ids = [
+            row.id
+            for row in rows
+            if include_demo or not json.loads(row.payload_json).get("is_demo", False)
+        ]
 
     embedder = build_optional_embedder()
     results: list[SourceCollectionResult] = []
@@ -135,6 +144,8 @@ def _collect_source(
             status="failed",
             collected=0,
             created=0,
+            already_seen=0,
+            content_duplicates=0,
             exact_duplicates=0,
             semantic_candidates=0,
             error=str(error),
@@ -143,6 +154,8 @@ def _collect_source(
     status = {
         "collected": stats.collected,
         "created": stats.created,
+        "already_seen": stats.already_seen,
+        "content_duplicates": stats.content_duplicates,
         "exact_duplicates": stats.exact_duplicates,
         "semantic_candidates": stats.semantic_candidates,
     }
@@ -181,6 +194,8 @@ def _collection_report(
         sources=results,
         collected=sum(result.collected for result in results),
         created=sum(result.created for result in results),
+        already_seen=sum(result.already_seen for result in results),
+        content_duplicates=sum(result.content_duplicates for result in results),
         exact_duplicates=sum(result.exact_duplicates for result in results),
         semantic_candidates=sum(result.semantic_candidates for result in results),
     )
@@ -198,18 +213,18 @@ def _ingest(
     canonical_urls = {item.canonical_url for item in existing}
     content_hashes = {item.content_hash for item in existing}
     prepared: list[_PreparedPublication] = []
-    duplicates = 0
+    already_seen = 0
+    content_duplicates = 0
 
     for item in items:
         canonical_url = _canonical_url(str(item.original_url))
         digest = content_hash(item.content)
         external_key = (source.id, item.external_id)
-        if (
-            external_key in external_keys
-            or canonical_url in canonical_urls
-            or digest in content_hashes
-        ):
-            duplicates += 1
+        if external_key in external_keys or canonical_url in canonical_urls:
+            already_seen += 1
+            continue
+        if digest in content_hashes:
+            content_duplicates += 1
             continue
 
         publication_id = f"publication-{uuid4().hex}"
@@ -271,7 +286,9 @@ def _ingest(
         CollectionStats(
             collected=len(items),
             created=len(prepared),
-            exact_duplicates=duplicates,
+            already_seen=already_seen,
+            content_duplicates=content_duplicates,
+            exact_duplicates=already_seen + content_duplicates,
             semantic_candidates=len(candidates),
         ),
         semantic_error,

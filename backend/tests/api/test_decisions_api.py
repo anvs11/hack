@@ -212,6 +212,7 @@ def test_history_can_be_empty_for_existing_publication(
     assert response.status_code == 200
     assert response.json() == {
         "publication_id": "pub-001",
+        "revisions": [],
         "analyses": [],
         "decisions": [],
     }

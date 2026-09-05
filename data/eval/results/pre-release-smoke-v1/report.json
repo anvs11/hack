@@ -1,0 +1,50 @@
+{
+  "kind": "pre_release_local_smoke",
+  "quality_claim_allowed": false,
+  "checked_at": "2026-09-05T07:54:00Z",
+  "api_version": "0.3.1",
+  "database": ".local/live.sqlite3",
+  "database_versioned": false,
+  "database_counts": {
+    "sources": 18,
+    "publications": 382,
+    "analysis_versions": 11,
+    "specialist_decisions": 1,
+    "regulatory_cases": 1,
+    "regulatory_case_publications": 1,
+    "lifecycle_events": 1,
+    "publication_embeddings": 382,
+    "duplicate_candidates": 381
+  },
+  "live_collection": {
+    "enabled_sources": 13,
+    "successful_sources": 13,
+    "collected": 312,
+    "created": 0,
+    "already_seen": 311,
+    "content_duplicates": 1,
+    "semantic_candidates": 0
+  },
+  "automated_checks": {
+    "backend_tests_passed": 167,
+    "frontend_tests_passed": 123,
+    "frontend_typecheck": "passed",
+    "frontend_lint_errors": 0,
+    "frontend_lint_warnings": 10,
+    "frontend_build": "passed"
+  },
+  "visual_checks": [
+    "feed_lists_prioritized_replay_cards_before_unanalysed_live_cards",
+    "replay_analysis_created_version_2_without_overwriting_version_1",
+    "specialist_decision_saved_and_visible_in_history_and_digest",
+    "publication_linked_idempotently_to_regulatory_case",
+    "official_draft_to_introduced_event_visible_in_timeline",
+    "aggregate_live_collection_report_visible_on_sources_page",
+    "live_llm_without_credentials_fails_without_creating_partial_analysis"
+  ],
+  "external_blockers": [
+    "public_https_server_not_created",
+    "live_llm_endpoint_and_credential_not_configured",
+    "telegram_bot_token_and_web_app_url_not_configured"
+  ]
+}
