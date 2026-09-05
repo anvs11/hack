@@ -1,481 +1,751 @@
-import {
-  type FormEvent,
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { api } from '../shared/api/client'
-import type {
-  Category,
-  Priority,
-  PublicationCreate,
-  PublicationQuery,
-  Source,
-  SourceType,
-} from '../shared/api/types'
 import { useApiResource } from '../shared/api/useApiResource'
 import { formatCategory, formatDate, formatPriority } from '../shared/format'
 import { PageState } from '../shared/PageState'
-import { sortPublications } from '../shared/publications'
-import { RevealText } from '../shared/RevealText'
-import { getCurrentActorId } from '../shared/telegram/adapter'
+import { ManualPublicationDialog } from '../shared/ManualPublicationDialog'
+import { ReportButton, useReport } from '../shared/ReportStore'
+import { decisionStatus } from '../shared/report'
+import {
+  categories,
+  priorities,
+  sourceTypes,
+  sourceTypeLabel,
+  filterLabels,
+  parseFeedQuery,
+  dateError,
+  dateBoundary,
+  localDay,
+} from '../shared/feedQuery'
+import { SignalMap } from '../shared/SignalMap'
 
-const HeroVisual = lazy(() => import('../shared/HeroVisual'))
-const SEARCH_DEBOUNCE_MS = 300
-
-const categories = [
-  'regulation',
-  'reputation',
-  'competitor',
-  'trend',
-  'unknown',
-] as const satisfies readonly Category[]
-const priorities = [
-  'critical',
-  'high',
-  'medium',
-  'low',
-  'unknown',
-] as const satisfies readonly Priority[]
-const sourceTypes = [
-  ['rss', 'СМИ / RSS'],
-  ['regulator', 'Регулятор'],
-  ['telegram', 'Telegram'],
-  ['telegram_archive', 'Telegram-архив'],
-  ['file', 'Файл'],
-  ['seed', 'Demo seed'],
-] as const satisfies readonly (readonly [SourceType, string])[]
-
-const queryFilterKeys = [
-  'source_id',
-  'source_type',
-  'category',
-  'proposed_priority',
-  'needs_review',
-  'published_from',
-  'published_to',
-] as const
-
-function allowedValue<T extends string>(
-  value: string | null,
-  options: readonly T[],
-): T | undefined {
-  return value && options.includes(value as T) ? value as T : undefined
-}
-
-function queryFromUrl(searchParams: URLSearchParams): PublicationQuery {
-  const q = searchParams.get('q')?.trim() || undefined
-  const sourceId = searchParams.get('source_id')?.trim() || undefined
-  const sourceType = allowedValue(
-    searchParams.get('source_type'),
-    sourceTypes.map(([value]) => value),
-  )
-  const category = allowedValue(searchParams.get('category'), categories)
-  const proposedPriority = allowedValue(
-    searchParams.get('proposed_priority'),
-    priorities,
-  )
-  const reviewValue = searchParams.get('needs_review')
-  const publishedFrom = searchParams.get('published_from')?.trim() || undefined
-  const publishedTo = searchParams.get('published_to')?.trim() || undefined
-
-  return {
-    q,
-    source_id: sourceId,
-    source_type: sourceType,
-    category,
-    proposed_priority: proposedPriority,
-    needs_review: reviewValue === 'true'
-      ? true
-      : reviewValue === 'false'
-        ? false
-        : undefined,
-    published_from: publishedFrom,
-    published_to: publishedTo,
-  }
-}
-
+// Position belongs to the exact result URL; it never changes the server order.
+const positions = new Map<string, number>()
 export function FeedPage() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const urlSearchValue = searchParams.get('q') ?? ''
-  const [searchValue, setSearchValue] = useState(urlSearchValue)
+  const [params, setParams] = useSearchParams()
+  const location = useLocation()
+  const report = useReport()
   const [refreshVersion, setRefreshVersion] = useState(0)
   const [actionStatus, setActionStatus] = useState('')
-  const query = useMemo(() => queryFromUrl(searchParams), [searchParams])
-  const loadPublications = useCallback(
-    (signal: AbortSignal) => api.listPublications(query, signal),
-    [query, refreshVersion],
+  const [selection, setSelection] = useState<Set<string>>(new Set())
+  const [highlighted, setHighlighted] = useState<string | null>(null)
+  const query = useMemo(() => parseFeedQuery(params), [params])
+  const invalidDates = dateError(query)
+  const load = useCallback(
+    (signal: AbortSignal) => {
+      void refreshVersion
+      return invalidDates
+        ? Promise.reject(new Error(invalidDates))
+        : api.listPublications(query, signal)
+    },
+    [query, refreshVersion, invalidDates],
   )
-  const loadSources = useCallback((signal: AbortSignal) => api.listSources(signal), [])
-  const loadAllCount = useCallback(
-    (signal: AbortSignal) => api.listPublications({ limit: 1 }, signal),
-    [refreshVersion],
+  const state = useApiResource(load)
+  const sources = useApiResource(
+    useCallback((signal: AbortSignal) => api.listSources(signal), []),
   )
-  const publicationsState = useApiResource(loadPublications)
-  const sourcesState = useApiResource(loadSources)
-  const allCountState = useApiResource(loadAllCount)
-
-  useEffect(() => setSearchValue(urlSearchValue), [urlSearchValue])
-
+  const items = state.status === 'success' ? state.data.items : []
+  const total = state.status === 'success' ? state.data.total : null
+  const sourceMap = new Map(sources.data?.map((s) => [s.id, s]))
+  const active = Object.entries(query).filter(
+    ([k, v]) => k in filterLabels && v !== undefined,
+  )
+  const advancedCount = active.filter(([k]) =>
+    ['source_id', 'source_type', 'needs_review', 'visibility'].includes(k),
+  ).length
+  const limit = query.limit ?? 10
+  const offset = query.offset ?? 0
+  const returnTo = `/feed${location.search}`
+  const restored = useRef('')
   useEffect(() => {
-    const normalizedValue = searchValue.trim()
-    if (normalizedValue === urlSearchValue) return
-
-    const timeout = setTimeout(() => {
-      setSearchParams((current) => {
-        const next = new URLSearchParams(current)
-        if (normalizedValue) next.set('q', normalizedValue)
-        else next.delete('q')
-        return next
+    restored.current = ''
+    const save = () => {
+      if (restored.current === returnTo) positions.set(returnTo, window.scrollY)
+    }
+    window.addEventListener('scroll', save, { passive: true })
+    return () => window.removeEventListener('scroll', save)
+  }, [returnTo])
+  useEffect(() => {
+    if (state.status !== 'success') {
+      restored.current = ''
+      return
+    }
+    if (restored.current !== returnTo) {
+      const position = positions.get(returnTo) ?? 0
+      const frame = requestAnimationFrame(() => {
+        window.scrollTo({ top: position, behavior: 'instant' })
+        // A cancelled frame must not mark an incoming result as restored.
+        restored.current = returnTo
       })
-    }, SEARCH_DEBOUNCE_MS)
-
-    return () => clearTimeout(timeout)
-  }, [searchValue, setSearchParams, urlSearchValue])
-
-  const updateFilter = (key: typeof queryFilterKeys[number], value: string) => {
-    setSearchParams((current) => {
+      return () => cancelAnimationFrame(frame)
+    }
+  }, [state.status, returnTo])
+  useEffect(() => setSelection(new Set()), [location.search])
+  function update(key: string, value: string) {
+    setParams((current) => {
       const next = new URLSearchParams(current)
       if (value) next.set(key, value)
       else next.delete(key)
+      if (key !== 'offset') next.delete('offset')
       return next
     })
   }
-  const reset = () => setSearchParams(new URLSearchParams())
-  const activeFilterCount = queryFilterKeys.filter((key) => query[key] !== undefined).length
-  const hasCriteria = Boolean(query.q || activeFilterCount)
-  const isLoading = publicationsState.status === 'loading' ||
-    sourcesState.status === 'loading' || allCountState.status === 'loading'
-  const error = publicationsState.status === 'error'
-    ? publicationsState.error
-    : sourcesState.status === 'error'
-      ? sourcesState.error
-      : allCountState.status === 'error'
-        ? allCountState.error
-        : null
-  const total = publicationsState.status === 'success' ? publicationsState.data.total : 0
-  const items = publicationsState.status === 'success'
-    ? sortPublications(publicationsState.data.items)
-    : []
-  const sourceNames = new Map(
-    sourcesState.status === 'success'
-      ? sourcesState.data.map((source) => [source.id, source.name])
-      : [],
-  )
-
+  function period(days: number | null) {
+    setParams((current) => {
+      const next = new URLSearchParams(current)
+      next.delete('offset')
+      if (days === null) {
+        next.delete('published_from')
+        next.delete('published_to')
+      } else {
+        const now = new Date()
+        const start = new Date(now)
+        start.setDate(start.getDate() - days + 1)
+        next.set('published_from', dateBoundary(localDay(start.toISOString())))
+        next.set(
+          'published_to',
+          dateBoundary(localDay(now.toISOString()), true),
+        )
+      }
+      return next
+    })
+  }
+  const reset = () => setParams(new URLSearchParams())
+  const toggle = (id: string) =>
+    setSelection((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   return (
-    <section className="feed-page">
-      <header className="feed-hero">
-        <div className="hero-copy">
-          <p className="eyebrow">Аналитический центр · Live demo</p>
-          <RevealText
-            lines={['Видеть сигнал.', 'Понимать влияние.', 'Действовать раньше.']}
-          />
-          <div className="hero-intro">
-            <p>
-              Единый поток СМИ, регуляторных источников и отраслевых каналов —
-              уже собран, объяснён и расставлен по приоритетам.
-            </p>
-            <a href="#signal-feed" className="round-link" aria-label="Перейти к ленте сигналов">↓</a>
-          </div>
+    <section
+      className="feed-page"
+      onClickCapture={(event) => {
+        // Capture before navigation; the browser may not have emitted scroll yet.
+        if (
+          event.target instanceof Element &&
+          event.target.closest('a[href^="/publications/"]')
+        )
+          positions.set(returnTo, window.scrollY)
+      }}
+    >
+      <header className="workspace-heading">
+        <div>
+          <p className="eyebrow">Рабочая лента</p>
+          <h1>
+            Мониторинг{' '}
+            <span
+              className="heading-count"
+              aria-label={
+                total === null ? 'Загрузка количества' : `${total} публикаций`
+              }
+            >
+              {total ?? '—'}
+            </span>
+          </h1>
         </div>
-        <Suspense fallback={<div className="hero-visual hero-visual-loading" aria-hidden="true" />}>
-          <HeroVisual />
-        </Suspense>
+        {sources.data && (
+          <ManualPublicationDialog
+            sources={sources.data}
+            onCreated={(title) => {
+              setActionStatus(`Публикация «${title}» добавлена.`)
+              setRefreshVersion((v) => v + 1)
+            }}
+          />
+        )}
       </header>
-
-      <section className="feed-section" id="signal-feed" aria-labelledby="feed-heading">
-        <header className="section-heading">
-          <div>
-            <p className="eyebrow">Сегодня в фокусе</p>
-            <h1 id="feed-heading">Лента сигналов</h1>
-          </div>
-          <div className="metric-card" aria-label={`${total} публикаций`}>
-            <strong>{publicationsState.status === 'success' ? String(total).padStart(2, '0') : '—'}</strong>
-            <span>материалов</span>
-          </div>
-          {sourcesState.status === 'success' && (
-            <ManualPublicationDialog
-              sources={sourcesState.data}
-              onCreated={(title) => {
-                setActionStatus(`Публикация «${title}» добавлена.`)
-                setRefreshVersion((value) => value + 1)
-              }}
-            />
-          )}
-        </header>
-
-        {actionStatus && <p className="action-message" role="status">{actionStatus}</p>}
-
-        <section className="feed-controls" aria-label="Поиск и фильтры публикаций">
-          <label className="search-field">
-            <span>Поиск по ленте</span>
+      <section
+        className="feed-controls"
+        aria-label="Поиск и фильтры публикаций"
+      >
+        <SearchField
+          key={params.get('q') ?? ''}
+          value={params.get('q') ?? ''}
+          onApply={(value) => update('q', value)}
+        />
+        <div className="primary-filters">
+          <label className="filter-field">
+            <span>Категория</span>
+            <select
+              aria-label="Категория"
+              value={query.category ?? ''}
+              onChange={(e) => update('category', e.target.value)}
+            >
+              <option value="">Все категории</option>
+              {categories.map((c) => (
+                <option key={c} value={c}>
+                  {formatCategory(c)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="filter-field">
+            <span>AI-приоритет</span>
+            <select
+              aria-label="AI-приоритет"
+              value={query.proposed_priority ?? ''}
+              onChange={(e) => update('proposed_priority', e.target.value)}
+            >
+              <option value="">Все приоритеты</option>
+              {priorities.map((p) => (
+                <option key={p} value={p}>
+                  {formatPriority(p)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="filter-field">
+            <span>Дата с</span>
             <input
-              type="search"
-              value={searchValue}
-              onChange={(event) => setSearchValue(event.target.value)}
-              placeholder="Проект, компания, тема…"
+              type="date"
+              value={localDay(query.published_from)}
+              onChange={(e) =>
+                update('published_from', dateBoundary(e.target.value))
+              }
             />
           </label>
-
-          <div className="filter-heading">
-            <span>Фильтры</span>
-            <span className="filter-count" aria-live="polite">
-              Активно: {activeFilterCount}
-            </span>
+          <label className="filter-field">
+            <span>Дата по</span>
+            <input
+              type="date"
+              value={localDay(query.published_to)}
+              onChange={(e) =>
+                update('published_to', dateBoundary(e.target.value, true))
+              }
+            />
+          </label>
+        </div>
+        <div className="filter-bottom">
+          <div className="quick-periods" aria-label="Быстрые периоды">
+            <span>Период</span>
+            <button
+              type="button"
+              aria-pressed={!query.published_from && !query.published_to}
+              onClick={() => period(null)}
+            >
+              Всё время
+            </button>
+            <button type="button" onClick={() => period(1)}>
+              Сегодня
+            </button>
+            <button type="button" onClick={() => period(7)}>
+              7 дней
+            </button>
+            <button type="button" onClick={() => period(30)}>
+              30 дней
+            </button>
           </div>
-
-          <div className="filter-grid">
+          <button
+            className="text-button"
+            type="button"
+            onClick={reset}
+            disabled={!active.length}
+          >
+            Сбросить
+          </button>
+        </div>
+        <details
+          className="advanced-filters"
+          open={advancedCount > 0 || undefined}
+        >
+          <summary>
+            Все фильтры{' '}
+            {advancedCount > 0 && (
+              <span className="count-badge">{advancedCount}</span>
+            )}
+          </summary>
+          <div className="primary-filters">
             <label className="filter-field">
               <span>Источник</span>
-              <select value={query.source_id ?? ''} onChange={(event) => updateFilter('source_id', event.target.value)}>
+              <select
+                aria-label="Источник"
+                value={query.source_id ?? ''}
+                onChange={(e) => update('source_id', e.target.value)}
+              >
                 <option value="">Все источники</option>
-                {sourcesState.status === 'success' && sourcesState.data.map((source) => (
-                  <option value={source.id} key={source.id}>{source.name}</option>
+                {sources.data?.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
                 ))}
+                {query.source_id && !sourceMap.has(query.source_id) && (
+                  <option value={query.source_id}>{query.source_id}</option>
+                )}
               </select>
             </label>
             <label className="filter-field">
               <span>Тип источника</span>
-              <select value={query.source_type ?? ''} onChange={(event) => updateFilter('source_type', event.target.value)}>
-                <option value="">Все типы</option>
-                {sourceTypes.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
-              </select>
-            </label>
-            <label className="filter-field">
-              <span>Категория</span>
-              <select value={query.category ?? ''} onChange={(event) => updateFilter('category', event.target.value)}>
-                <option value="">Все категории</option>
-                {categories.map((category) => <option value={category} key={category}>{formatCategory(category)}</option>)}
-              </select>
-            </label>
-            <label className="filter-field">
-              <span>AI-приоритет</span>
-              <select value={query.proposed_priority ?? ''} onChange={(event) => updateFilter('proposed_priority', event.target.value)}>
-                <option value="">Все приоритеты</option>
-                {priorities.map((priority) => <option value={priority} key={priority}>{formatPriority(priority)}</option>)}
-              </select>
-            </label>
-            <label className="filter-field">
-              <span>Статус проверки</span>
               <select
-                value={query.needs_review === undefined ? '' : String(query.needs_review)}
-                onChange={(event) => updateFilter('needs_review', event.target.value)}
+                aria-label="Тип источника"
+                value={query.source_type ?? ''}
+                onChange={(e) => update('source_type', e.target.value)}
               >
-                <option value="">Все статусы</option>
-                <option value="true">Требует проверки</option>
-                <option value="false">Проверено AI</option>
+                <option value="">Все типы</option>
+                {sourceTypes.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
               </select>
             </label>
             <label className="filter-field">
-              <span>Дата с</span>
-              <input
-                type="date"
-                value={query.published_from?.slice(0, 10) ?? ''}
-                onChange={(event) => updateFilter(
-                  'published_from',
-                  event.target.value ? `${event.target.value}T00:00:00.000Z` : '',
-                )}
-              />
+              <span>Флаг проверки AI</span>
+              <select
+                aria-label="Флаг проверки AI"
+                value={
+                  query.needs_review === undefined
+                    ? ''
+                    : String(query.needs_review)
+                }
+                onChange={(e) => update('needs_review', e.target.value)}
+              >
+                <option value="">Все значения</option>
+                <option value="true">AI требует проверки</option>
+                <option value="false">AI не запрашивает проверку</option>
+              </select>
             </label>
             <label className="filter-field">
-              <span>Дата по</span>
-              <input
-                type="date"
-                value={query.published_to?.slice(0, 10) ?? ''}
-                onChange={(event) => updateFilter(
-                  'published_to',
-                  event.target.value ? `${event.target.value}T23:59:59.999Z` : '',
-                )}
-              />
+              <span>Видимость</span>
+              <select
+                aria-label="Видимость"
+                value={query.visibility ?? 'active'}
+                onChange={(e) =>
+                  update(
+                    'visibility',
+                    e.target.value === 'active' ? '' : e.target.value,
+                  )
+                }
+              >
+                <option value="active">Активные</option>
+                <option value="hidden">Скрытые</option>
+                <option value="all">Все публикации</option>
+              </select>
             </label>
-            <button className="reset-button" type="button" onClick={reset} disabled={!hasCriteria}>
-              Сбросить
-            </button>
           </div>
-        </section>
-
-        <div className="feed-results" aria-live="polite">
-          {isLoading && (
+        </details>
+        {invalidDates && (
+          <p className="form-error" role="alert">
+            {invalidDates}
+          </p>
+        )}
+        {active.length > 0 && (
+          <div className="active-filters" aria-label="Применённые фильтры">
+            {active.map(([key, value]) => {
+              const label =
+                key === 'category'
+                  ? formatCategory(query.category!)
+                  : key === 'proposed_priority'
+                    ? formatPriority(query.proposed_priority!)
+                    : key === 'source_id'
+                      ? (sourceMap.get(String(value))?.name ?? value)
+                      : key.startsWith('published_')
+                        ? localDay(String(value))
+                        : key === 'needs_review'
+                          ? value
+                            ? 'Требует проверки'
+                            : 'Не запрашивает'
+                          : key === 'source_type'
+                            ? sourceTypeLabel(String(value))
+                            : key === 'visibility'
+                              ? {
+                                  hidden: 'Скрытые',
+                                  all: 'Все',
+                                  active: 'Активные',
+                                }[String(value)]
+                              : value
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => update(key, '')}
+                  aria-label={`Удалить фильтр ${filterLabels[key]}`}
+                >
+                  {filterLabels[key]}: {String(label)}{' '}
+                  <span aria-hidden="true">×</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </section>
+      {actionStatus && (
+        <p className="action-message" role="status">
+          {actionStatus}
+        </p>
+      )}
+      {sources.status === 'error' && (
+        <p className="inline-warning">
+          Названия источников недоступны. Публикации показаны с ID источников.
+        </p>
+      )}
+      <div className="monitor-layout">
+        <div className="feed-results">
+          <div className="feed-summary-bar">
+            <div className="results-toolbar">
+              <div>
+                <strong>
+                  {total === null
+                    ? 'Загружаем публикации'
+                    : `Найдено: ${total}`}
+                </strong>
+                <span className="sort-note">Приоритет AI → дата</span>
+              </div>
+              <span className="muted">Активно: {active.length}</span>
+            </div>
+            {items.length > 0 && (
+              <div className="selection-toolbar">
+                <label className="check-label">
+                  <input
+                    type="checkbox"
+                    checked={items.every((i) =>
+                      selection.has(i.publication.id),
+                    )}
+                    onChange={(e) =>
+                      setSelection(
+                        new Set(
+                          e.target.checked
+                            ? items.map((i) => i.publication.id)
+                            : [],
+                        ),
+                      )
+                    }
+                  />
+                  Выбрать страницу
+                </label>
+                <button
+                  disabled={!selection.size}
+                  type="button"
+                  onClick={() => {
+                    report.add(
+                      items
+                        .filter((i) => selection.has(i.publication.id))
+                        .map((detail) => ({
+                          detail,
+                          source: sourceMap.get(detail.publication.source_id),
+                        })),
+                    )
+                    setActionStatus(
+                      `Выбранные материалы добавлены в отчёт: ${selection.size}. Повторы исключены.`,
+                    )
+                    setSelection(new Set())
+                  }}
+                >
+                  В отчёт{selection.size > 0 && ` (${selection.size})`}{' '}
+                  <span aria-hidden="true">↗</span>
+                </button>
+              </div>
+            )}
+          </div>
+          {state.status === 'loading' && (
             <PageState
               kind="loading"
               title="Собираем ленту"
               message="Получаем публикации и последние AI-анализы."
             />
           )}
-
-          {!isLoading && error && (
-            <PageState kind="error" title="Лента не загрузилась" message={error.message} />
-          )}
-
-          {!isLoading && !error && publicationsState.status === 'success' &&
-            allCountState.status === 'success' && allCountState.data.total === 0 && (
+          {state.status === 'error' && !invalidDates && (
             <PageState
-              kind="empty"
-              title="Публикаций нет"
-              message="В ленте пока нет материалов."
+              kind="error"
+              title="Лента не загрузилась"
+              message={state.error.message}
+              action={
+                <button onClick={() => setRefreshVersion((v) => v + 1)}>
+                  Повторить
+                </button>
+              }
             />
           )}
-
-          {!isLoading && !error && items.length === 0 &&
-            allCountState.status === 'success' && allCountState.data.total > 0 && (
+          {state.status === 'success' && !items.length && (
             <PageState
               kind="empty"
-              title="Ничего не найдено"
-              message="Измените запрос или сбросьте выбранные фильтры."
-              action={<button className="button-link state-action" type="button" onClick={reset}>Сбросить поиск и фильтры</button>}
+              title={
+                active.length
+                  ? 'Ничего не найдено'
+                  : offset
+                    ? 'На этой странице нет материалов'
+                    : 'Публикаций нет'
+              }
+              message={
+                active.length
+                  ? 'Измените запрос или сбросьте выбранные фильтры.'
+                  : 'В ленте пока нет материалов.'
+              }
+              action={
+                <button onClick={offset ? () => update('offset', '') : reset}>
+                  {offset ? 'На первую страницу' : 'Сбросить поиск и фильтры'}
+                </button>
+              }
             />
           )}
-
-          {!isLoading && !error && items.length > 0 && (
-            <div className="card-list">
-              {items.map(({ publication, latest_analysis: analysis }, index) => (
-                <article className="publication-card" key={publication.id}>
-                  <div className="card-number" aria-hidden="true">{String(index + 1).padStart(2, '0')}</div>
-                  <div className="card-meta">
-                    <span>{formatDate(publication.published_at)}</span>
-                    <span>{sourceNames.get(publication.source_id) ?? publication.source_id}</span>
-                  </div>
-                  <h2>
-                    <Link to={`/publications/${publication.id}`}>
-                      {publication.title}
-                      <span className="card-arrow" aria-hidden="true">↗</span>
-                    </Link>
-                  </h2>
-                  <div className="tag-row">
-                    <span className="tag">Категория · {formatCategory(analysis?.category ?? 'unknown')}</span>
-                    <span className={`priority priority-${analysis?.proposed_priority ?? 'unknown'}`}>
-                      AI-приоритет · {formatPriority(analysis?.proposed_priority ?? 'unknown')}
-                    </span>
-                    {analysis ? (
-                      <span className={`review-status ${analysis.needs_review ? 'needs-review' : 'reviewed'}`}>
-                        {analysis.needs_review ? 'Требует проверки' : 'Проверено AI'}
-                      </span>
-                    ) : (
-                      <span className="review-status needs-review">Нет AI-анализа</span>
-                    )}
-                  </div>
-                  <a
-                    className="original-link"
-                    href={publication.original_url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Открыть оригинал <span aria-hidden="true">↗</span>
-                  </a>
-                </article>
-              ))}
-            </div>
+          {items.length > 0 && (
+            <>
+              <div className="card-list">
+                {items.map((detail) => {
+                  const { publication: p, latest_analysis: a } = detail
+                  const source = sourceMap.get(p.source_id)
+                  return (
+                    <article
+                      id={`publication-${p.id}`}
+                      className={`publication-card ${highlighted === p.id ? 'highlighted' : ''}`}
+                      key={p.id}
+                      onMouseEnter={() => setHighlighted(p.id)}
+                      onMouseLeave={() => setHighlighted(null)}
+                      onFocus={() => setHighlighted(p.id)}
+                      onBlur={(e) => {
+                        if (!e.currentTarget.contains(e.relatedTarget))
+                          setHighlighted(null)
+                      }}
+                    >
+                      <div className="card-top">
+                        <div className="card-meta">
+                          <span className="source-avatar" aria-hidden="true">
+                            {(source?.name ?? p.source_id).charAt(0)}
+                          </span>
+                          <span
+                            className="card-source-name"
+                            title={source?.name ?? p.source_id}
+                          >
+                            {source?.name ?? p.source_id}
+                          </span>
+                          <span>{sourceTypeLabel(source?.type)}</span>
+                          <time dateTime={p.published_at}>
+                            {formatDate(p.published_at)}
+                          </time>
+                        </div>
+                        <input
+                          type="checkbox"
+                          aria-label={`Выбрать: ${p.title}`}
+                          checked={selection.has(p.id)}
+                          onChange={() => toggle(p.id)}
+                        />
+                      </div>
+                      <h2>
+                        <Link
+                          to={`/publications/${encodeURIComponent(p.id)}`}
+                          state={{ returnTo }}
+                          onClick={() =>
+                            positions.set(returnTo, window.scrollY)
+                          }
+                        >
+                          {p.title}
+                        </Link>
+                      </h2>
+                      <p className="card-summary">
+                        {!a && <strong>Фрагмент исходного материала: </strong>}
+                        {a?.summary ??
+                          `${p.content.slice(0, 320)}${p.content.length > 320 ? '…' : ''}`}
+                      </p>
+                      <div className="tag-row">
+                        <span
+                          className={`tag category-${a?.category ?? 'unknown'}`}
+                        >
+                          Категория · {formatCategory(a?.category ?? 'unknown')}
+                        </span>
+                        <span
+                          className={`priority priority-${a?.proposed_priority ?? 'unknown'}`}
+                        >
+                          AI-приоритет ·{' '}
+                          {formatPriority(a?.proposed_priority ?? 'unknown')}
+                        </span>
+                        <span className="score">
+                          Важность:{' '}
+                          <strong>
+                            {a?.importance_score == null
+                              ? 'Нет данных'
+                              : `${a.importance_score} / 18`}
+                          </strong>
+                        </span>
+                      </div>
+                      {p.tags.length > 0 && (
+                        <div className="news-tags">
+                          {p.tags.map((t) => (
+                            <span key={t}>#{t}</span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="card-bottom">
+                        <div className="decision-line">
+                          <span className="human-status">
+                            {decisionStatus(detail)}
+                          </span>
+                          <span>
+                            {a
+                              ? a.needs_review
+                                ? 'AI требует проверки'
+                                : 'AI не запрашивает проверку'
+                              : 'Нет AI-анализа'}
+                          </span>
+                          {p.is_hidden && <span>Скрыта</span>}
+                          {p.is_demo && <span>Demo</span>}
+                        </div>
+                        <div className="card-actions">
+                          <Link
+                            className="analysis-link"
+                            to={`/publications/${encodeURIComponent(p.id)}`}
+                            state={{ returnTo }}
+                            onClick={() =>
+                              positions.set(returnTo, window.scrollY)
+                            }
+                          >
+                            Открыть анализ <span aria-hidden="true">↗</span>
+                          </Link>
+                          <a
+                            className="original-link"
+                            href={p.original_url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Открыть оригинал
+                          </a>
+                          <ReportButton detail={detail} source={source} />
+                        </div>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            </>
+          )}
+          {total !== null && total > 0 && (
+            <nav className="pagination" aria-label="Страницы публикаций">
+              <button
+                disabled={offset === 0}
+                onClick={() =>
+                  update('offset', String(Math.max(0, offset - limit)))
+                }
+              >
+                ← Назад
+              </button>
+              <span>
+                {Math.min(offset + 1, total)}–
+                {Math.min(offset + items.length, total)} из {total}
+              </span>
+              <button
+                disabled={offset + limit >= total}
+                onClick={() => update('offset', String(offset + limit))}
+              >
+                Далее →
+              </button>
+              <label>
+                На странице
+                <select
+                  value={limit}
+                  onChange={(e) => update('limit', e.target.value)}
+                >
+                  {[...new Set([5, 10, 20, 50, limit])]
+                    .sort((a, b) => a - b)
+                    .map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            </nav>
           )}
         </div>
-      </section>
+        <aside className="monitor-aside">
+          <SignalMap
+            sourceNames={Object.fromEntries(
+              [...sourceMap].map(([id, source]) => [id, source.name]),
+            )}
+            items={items}
+            total={total ?? 0}
+            highlighted={highlighted}
+            onHighlight={setHighlighted}
+            returnTo={returnTo}
+          />
+          <section className="report-mini">
+            <div className="panel-heading">
+              <h2>В вашем отчёте</h2>
+              <span className="count-badge">{report.draft.items.length}</span>
+            </div>
+            {report.draft.items.length ? (
+              <ol>
+                {report.draft.items.slice(0, 3).map((i) => (
+                  <li key={i.id}>
+                    <Link to={`/publications/${encodeURIComponent(i.id)}`}>
+                      {i.detail.publication.title}
+                    </Link>
+                    <button
+                      type="button"
+                      aria-label={`Удалить из отчёта: ${i.detail.publication.title}`}
+                      onClick={() => report.remove(i.id)}
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p>
+                Добавляйте важные материалы из ленты. Соберите обзор с
+                комментариями для руководителя.
+              </p>
+            )}
+            <Link className="report-open" to="/digest">
+              Открыть отчёт <span aria-hidden="true">→</span>
+            </Link>
+            <small>
+              {report.warning
+                ? 'Есть несохранённые изменения'
+                : 'Черновик сохранён в этом браузере'}
+            </small>
+          </section>
+        </aside>
+      </div>
     </section>
   )
 }
-
-function ManualPublicationDialog({
-  sources,
-  onCreated,
+function SearchField({
+  value,
+  onApply,
 }: {
-  sources: Source[]
-  onCreated: (title: string) => void
+  value: string
+  onApply: (value: string) => void
 }) {
-  const [isOpen, setIsOpen] = useState(false)
-  const [sourceId, setSourceId] = useState(sources[0]?.id ?? '')
-  const [title, setTitle] = useState('')
-  const [url, setUrl] = useState('')
-  const [publishedAt, setPublishedAt] = useState(
-    new Date().toISOString().slice(0, 16),
+  const [text, setText] = useState(value)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const apply = useRef(onApply)
+  apply.current = onApply
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current)
+    },
+    [],
   )
-  const [content, setContent] = useState('')
-  const [tags, setTags] = useState('')
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState('')
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (isSubmitting) return
-    setIsSubmitting(true)
-    setError('')
-    const payload: PublicationCreate = {
-      source_id: sourceId,
-      title: title.trim(),
-      original_url: url.trim(),
-      published_at: new Date(publishedAt).toISOString(),
-      content: content.trim(),
-      tags: [...new Set(tags.split(',').map((tag) => tag.trim()).filter(Boolean))],
-      author_id: getCurrentActorId(),
-    }
-    try {
-      const detail = await api.createPublication(payload)
-      setIsOpen(false)
-      onCreated(detail.publication.title)
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Не удалось добавить публикацию')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
   return (
-    <>
-      <button className="primary-action" type="button" onClick={() => setIsOpen(true)}>
-        Добавить публикацию
+    <form
+      className="search-form"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (timer.current) clearTimeout(timer.current)
+        onApply(text.trim())
+      }}
+    >
+      <label className="search-field">
+        <span className="sr-only">Поиск по ленте</span>
+        <span aria-hidden="true" className="search-icon">
+          ⌕
+        </span>
+        <input
+          type="search"
+          aria-label="Поиск по ленте"
+          placeholder="Поиск по публикациям, компаниям и темам…"
+          value={text}
+          onChange={(e) => {
+            const v = e.target.value
+            setText(v)
+            if (timer.current) clearTimeout(timer.current)
+            timer.current = setTimeout(() => apply.current(v.trim()), 300)
+          }}
+        />
+      </label>
+      <button className="primary-action" type="submit">
+        Найти
       </button>
-      {isOpen && (
-        <div className="dialog-backdrop" onMouseDown={(event) => {
-          if (event.target === event.currentTarget) setIsOpen(false)
-        }}>
-          <section className="case-dialog" role="dialog" aria-modal="true" aria-labelledby="manual-publication-title">
-            <div className="dialog-heading">
-              <div>
-                <p className="eyebrow">Ручной ввод</p>
-                <h2 id="manual-publication-title">Новая публикация</h2>
-              </div>
-              <button type="button" className="dialog-close" onClick={() => setIsOpen(false)} aria-label="Закрыть диалог">×</button>
-            </div>
-            <form className="decision-form" onSubmit={submit}>
-              <label className="form-field">
-                <span>Источник</span>
-                <select value={sourceId} required onChange={(event) => setSourceId(event.target.value)}>
-                  {sources.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
-                </select>
-              </label>
-              <label className="form-field">
-                <span>Дата публикации</span>
-                <input type="datetime-local" value={publishedAt} required onChange={(event) => setPublishedAt(event.target.value)} />
-              </label>
-              <label className="form-field form-field-wide">
-                <span>Заголовок</span>
-                <input value={title} required onChange={(event) => setTitle(event.target.value)} />
-              </label>
-              <label className="form-field form-field-wide">
-                <span>Ссылка на оригинал</span>
-                <input type="url" value={url} required onChange={(event) => setUrl(event.target.value)} />
-              </label>
-              <label className="form-field form-field-wide">
-                <span>Текст</span>
-                <textarea value={content} required rows={7} onChange={(event) => setContent(event.target.value)} />
-              </label>
-              <label className="form-field form-field-wide">
-                <span>Теги через запятую</span>
-                <input value={tags} onChange={(event) => setTags(event.target.value)} />
-              </label>
-              {error && <p className="form-error form-field-wide" role="alert">{error}</p>}
-              <div className="dialog-actions form-field-wide">
-                <button className="secondary-action" type="button" onClick={() => setIsOpen(false)}>Отмена</button>
-                <button className="primary-action" type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? 'Добавляем…' : 'Добавить'}
-                </button>
-              </div>
-            </form>
-          </section>
-        </div>
-      )}
-    </>
+    </form>
   )
 }

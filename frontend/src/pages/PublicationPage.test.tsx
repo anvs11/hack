@@ -98,7 +98,7 @@ describe('publication analysis card', () => {
     renderPublication()
 
     expect(await screen.findByRole('heading', { name: 'Скорректировано' })).toBeInTheDocument()
-    expect(screen.getByText('Финальное решение специалиста · v1')).toBeInTheDocument()
+    expect(screen.getByText('Решение относится к предыдущей версии анализа · v1')).toBeInTheDocument()
     expect(screen.getByText('Проверено по первоисточнику.')).toBeInTheDocument()
     expect(screen.getAllByText('Финальный приоритет').length).toBeGreaterThan(0)
   })
@@ -322,7 +322,7 @@ describe('regulatory case linking dialog', () => {
 })
 
 describe('controlled publication API failure', () => {
-  it('renders a visible page-level alert', async () => {
+  it('keeps the current publication visible when history fails', async () => {
     server.use(
       http.get('*/api/publications/pub-001/history', () =>
         HttpResponse.json({ message: 'История недоступна' }, { status: 500 }),
@@ -330,5 +330,6 @@ describe('controlled publication API failure', () => {
     )
     renderPublication()
     expect(await screen.findByRole('alert')).toHaveTextContent('История недоступна')
+    expect(screen.getByRole('heading', { name: 'Выбранная версия' })).toBeInTheDocument()
   })
 })

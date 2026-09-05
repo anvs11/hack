@@ -19,7 +19,7 @@ import { formatDate } from '../shared/format'
 import { server } from '../test/setup'
 
 function renderDigest() {
-  render(<RouterProvider router={createTestRouter('/digest')} />)
+  render(<RouterProvider router={createTestRouter('/digest?tab=auto')} />)
 }
 
 function publicationResponse(items: readonly PublicationDetail[] = publicationDetails): PublicationList {
@@ -214,7 +214,7 @@ describe('DigestPage', () => {
     expect(blobs).toHaveLength(2)
     expect(blobs[0].type).toBe('application/json;charset=utf-8')
     expect(blobs[1].type).toBe('text/markdown;charset=utf-8')
-    expect(downloads[0]).toMatch(/^digest-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.json$/)
+    expect(downloads[0]).toMatch(/^RegRadar-digest-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.json$/)
     expect(downloads[1]).toBe(downloads[0].replace(/\.json$/, '.md'))
     expect(createObjectURL).toHaveBeenCalledTimes(2)
     expect(click).toHaveBeenCalledTimes(2)

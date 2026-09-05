@@ -4,7 +4,8 @@ import {
   createMemoryRouter,
   type RouteObject,
 } from 'react-router-dom'
-import { DigestPage } from '../pages/DigestPage'
+import { ReportPage } from '../pages/ReportPage'
+import { RegulatoryCasesPage } from '../pages/RegulatoryCasesPage'
 import { DuplicatesPage } from '../pages/DuplicatesPage'
 import { FeedPage } from '../pages/FeedPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
@@ -22,9 +23,10 @@ export const routes = [
       { path: 'feed', element: <FeedPage /> },
       { path: 'duplicates', element: <DuplicatesPage /> },
       { path: 'publications/:id', element: <PublicationPage /> },
+      { path: 'regulatory-cases', element: <RegulatoryCasesPage /> },
       { path: 'regulatory-cases/:id', element: <RegulatoryCasePage /> },
       { path: 'sources', element: <SourcesPage /> },
-      { path: 'digest', element: <DigestPage /> },
+      { path: 'digest', element: <ReportPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },

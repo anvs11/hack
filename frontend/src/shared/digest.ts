@@ -401,7 +401,7 @@ export async function loadDigestSourceData(signal: AbortSignal): Promise<DigestS
 }
 
 export function serializeDigestJson(snapshot: DigestSnapshot) {
-  return `${JSON.stringify(snapshot, null, 2)}\n`
+  return `${JSON.stringify({ brand: 'RegRadar', ...snapshot }, null, 2)}\n`
 }
 
 const normalizeMarkdownText = (value: string) => value.replace(/\s+/g, ' ').trim()
@@ -500,7 +500,7 @@ export function serializeDigestMarkdown(snapshot: DigestSnapshot) {
       ].join('\n'))
 
   return [
-    '# Управленческий дайджест',
+    '# RegRadar · Управленческий дайджест',
     '',
     `Дата формирования: ${markdownDate(snapshot.generated_at)}`,
     '',
@@ -526,7 +526,7 @@ export function digestFilename(generatedAt: string, extension: 'json' | 'md') {
   const timestamp = new Date(generatedAt).toISOString()
     .replace(/\.\d{3}Z$/, 'Z')
     .replace(/:/g, '-')
-  return `digest-${timestamp}.${extension}`
+  return `RegRadar-digest-${timestamp}.${extension}`
 }
 
 export function downloadDigest(content: string, filename: string, mimeType: string) {

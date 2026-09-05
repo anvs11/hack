@@ -240,7 +240,7 @@ describe('digest serializers', () => {
     const snapshot = buildDigestSnapshot(sourceData(), generatedAt)
     const json = serializeDigestJson(snapshot)
 
-    expect(JSON.parse(json)).toEqual(snapshot)
+    expect(JSON.parse(json)).toEqual({ brand: 'RegRadar', ...snapshot })
     expect(json.endsWith('\n')).toBe(true)
   })
 
@@ -292,8 +292,8 @@ describe('digest serializers', () => {
   })
 
   it('forms deterministic filenames without milliseconds', () => {
-    expect(digestFilename(generatedAt, 'json')).toBe('digest-2026-09-04T10-20-30Z.json')
-    expect(digestFilename(generatedAt, 'md')).toBe('digest-2026-09-04T10-20-30Z.md')
+    expect(digestFilename(generatedAt, 'json')).toBe('RegRadar-digest-2026-09-04T10-20-30Z.json')
+    expect(digestFilename(generatedAt, 'md')).toBe('RegRadar-digest-2026-09-04T10-20-30Z.md')
   })
 })
 
