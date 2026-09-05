@@ -21,6 +21,10 @@ data/*
 deploy/.env
 deploy/secrets/
 
+# Browser E2E artifacts (the canonical runner writes them to a temporary directory)
+playwright-report/
+test-results/
+
 # Python
 __pycache__/
 *.py[cod]
