@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  getCurrentActorId,
   getTelegramRuntimeInfo,
   mountTelegramRuntime,
 } from './adapter'
@@ -47,6 +48,7 @@ function installWebApp(webApp: TelegramWebApp) {
 
 beforeEach(() => {
   delete window.Telegram
+  delete document.documentElement.dataset.telegramUserId
   window.history.replaceState(null, '', '/')
   cssProperties.forEach((property) =>
     document.documentElement.style.removeProperty(property),
@@ -55,6 +57,14 @@ beforeEach(() => {
 })
 
 describe('Telegram adapter', () => {
+  it('uses the verified Telegram id for audited write actions', () => {
+    expect(getCurrentActorId()).toBe('user-gr-001')
+
+    document.documentElement.dataset.telegramUserId = '42'
+
+    expect(getCurrentActorId()).toBe('telegram:42')
+  })
+
   it('is a safe no-op in a regular browser', () => {
     expect(getTelegramRuntimeInfo()).toEqual({
       isAvailable: false,

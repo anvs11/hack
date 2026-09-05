@@ -17,6 +17,7 @@ import type {
 import { formatDate } from '../shared/format'
 import { PageState } from '../shared/PageState'
 import { RevealText } from '../shared/RevealText'
+import { getCurrentActorId } from '../shared/telegram/adapter'
 
 const stageLabels: Record<LifecycleStage, string> = {
   draft: 'Проект',
@@ -316,7 +317,7 @@ function LifecycleEventForm({
       confirmation_url: confirmationUrl,
       confirmation_source_type: confirmationSourceType,
       comment: comment.trim() || null,
-      author_id: authorId,
+      author_id: getCurrentActorId(authorId),
     }
 
     try {

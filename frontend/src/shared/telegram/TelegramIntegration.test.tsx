@@ -1,5 +1,5 @@
 import { StrictMode } from 'react'
-import { act, render, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { routes } from '../../app/router'
@@ -47,7 +47,7 @@ afterEach(() => {
 })
 
 describe('Telegram router integration', () => {
-  it('hides BackButton on /feed', () => {
+  it('hides BackButton on /feed and shows the verified Telegram user', async () => {
     const telegram = createTelegramMock()
     const router = createMemoryRouter(routes, { initialEntries: ['/feed'] })
 
@@ -56,6 +56,26 @@ describe('Telegram router integration', () => {
     expect(telegram.backButton.hide).toHaveBeenCalled()
     expect(telegram.backButton.show).not.toHaveBeenCalled()
     expect(telegram.backHandlers).toHaveLength(0)
+    expect(await screen.findByText('Telegram · Test')).toBeInTheDocument()
+  })
+
+  it('authenticates when the official SDK finishes loading after React', async () => {
+    const sdkScript = document.createElement('script')
+    sdkScript.dataset.telegramWebApp = ''
+    document.head.append(sdkScript)
+    const telegram = createTelegramMock()
+    delete window.Telegram
+    const router = createMemoryRouter(routes, { initialEntries: ['/feed'] })
+
+    const view = render(<RouterProvider router={router} />)
+    expect(screen.queryByText('Telegram · Test')).not.toBeInTheDocument()
+
+    window.Telegram = { WebApp: telegram.webApp }
+    sdkScript.dispatchEvent(new Event('load'))
+
+    expect(await screen.findByText('Telegram · Test')).toBeInTheDocument()
+    view.unmount()
+    sdkScript.remove()
   })
 
   it('shows BackButton on a nested route and falls back to /feed for a deep link', async () => {

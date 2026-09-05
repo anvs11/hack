@@ -1,13 +1,21 @@
 import { http, HttpResponse } from 'msw'
 import type {
   ApiErrorBody,
+  AnalysisCreate,
+  AnalysisVersion,
   Category,
   CollectionReport,
+  DuplicateCandidate,
+  DuplicateReviewCreate,
   LifecycleEvent,
   LifecycleEventCreate,
   LifecycleStage,
   Priority,
+  PublicationCreate,
+  PublicationDetail,
   PublicationList,
+  PublicationPatch,
+  PublicationRevision,
   Source,
   SourceCreate,
   SourcePatch,
@@ -25,6 +33,12 @@ import {
 } from './fixtures'
 
 let decisions: SpecialistDecision[] = [...publicationHistory.decisions]
+let mutablePublicationDetails: PublicationDetail[] = publicationDetails.map((detail) => ({
+  ...detail,
+  publication: { ...detail.publication, tags: [...detail.publication.tags] },
+}))
+let publicationRevisions: PublicationRevision[] = [...publicationHistory.revisions]
+let publicationAnalyses: AnalysisVersion[] = [...publicationHistory.analyses]
 let linkedPublicationIds = new Set(
   regulatoryCaseDetail.regulatory_case.related_publication_ids,
 )
@@ -33,6 +47,8 @@ let currentStage: LifecycleStage = regulatoryCaseDetail.regulatory_case.current_
 let mutableSources: Source[] = sources.map((source) => ({ ...source }))
 let nextSourceId = 1
 let collectionRun = 0
+let nextPublicationId = 1
+let duplicateCandidates: DuplicateCandidate[] = []
 
 const allowedTransitions: Record<LifecycleStage, LifecycleStage[]> = {
   draft: ['introduced'],
@@ -46,6 +62,12 @@ const allowedTransitions: Record<LifecycleStage, LifecycleStage[]> = {
 
 export function resetMockState() {
   decisions = [...publicationHistory.decisions]
+  mutablePublicationDetails = publicationDetails.map((detail) => ({
+    ...detail,
+    publication: { ...detail.publication, tags: [...detail.publication.tags] },
+  }))
+  publicationRevisions = [...publicationHistory.revisions]
+  publicationAnalyses = [...publicationHistory.analyses]
   linkedPublicationIds = new Set(
     regulatoryCaseDetail.regulatory_case.related_publication_ids,
   )
@@ -54,7 +76,24 @@ export function resetMockState() {
   mutableSources = sources.map((source) => ({ ...source }))
   nextSourceId = 1
   collectionRun = 0
+  nextPublicationId = 1
+  duplicateCandidates = [mockDuplicateCandidate()]
 }
+
+function mockDuplicateCandidate(): DuplicateCandidate {
+  return {
+    id: 'duplicate-mock-001',
+    publication: mutablePublicationDetails[1],
+    candidate_publication: mutablePublicationDetails[0],
+    model: 'Qwen/Qwen3-Embedding-0.6B',
+    similarity: 0.91,
+    status: 'unreviewed',
+    reviews: [],
+    created_at: '2026-09-05T08:00:00Z',
+  }
+}
+
+duplicateCandidates = [mockDuplicateCandidate()]
 
 const notFound = (resource: string) =>
   HttpResponse.json(
@@ -66,6 +105,41 @@ const notFound = (resource: string) =>
   )
 
 export const handlers = [
+  http.get('*/api/duplicate-candidates', ({ request }) => {
+    const params = new URL(request.url).searchParams
+    const status = params.get('status')
+    const matching = status && status !== 'all'
+      ? duplicateCandidates.filter((candidate) => candidate.status === status)
+      : duplicateCandidates
+    const limit = Number(params.get('limit') ?? 20)
+    const offset = Number(params.get('offset') ?? 0)
+    const items = matching.slice(offset, offset + limit)
+    return HttpResponse.json({ items, total: matching.length, limit, offset })
+  }),
+
+  http.post('*/api/duplicate-candidates/:candidateId/reviews', async ({ params, request }) => {
+    const index = duplicateCandidates.findIndex((item) => item.id === params.candidateId)
+    if (index < 0) return notFound('Кандидат на дубликат')
+    const body = await request.json() as DuplicateReviewCreate
+    const candidate = duplicateCandidates[index]
+    const review = {
+      id: `duplicate-review-mock-${candidate.reviews.length + 1}`,
+      candidate_id: candidate.id,
+      version: candidate.reviews.length + 1,
+      verdict: body.verdict,
+      reviewer_id: body.reviewer_id,
+      comment: body.comment ?? null,
+      created_at: new Date().toISOString(),
+    }
+    const updated: DuplicateCandidate = {
+      ...candidate,
+      status: body.verdict,
+      reviews: [...candidate.reviews, review],
+    }
+    duplicateCandidates = duplicateCandidates.map((item) => item.id === updated.id ? updated : item)
+    return HttpResponse.json(updated, { status: 201 })
+  }),
+
   http.get('*/api/publications', ({ request }) => {
     const params = new URL(request.url).searchParams
     const q = params.get('q')?.trim().toLocaleLowerCase('ru')
@@ -74,6 +148,9 @@ export const handlers = [
     const category = params.get('category') as Category | null
     const proposedPriority = params.get('proposed_priority') as Priority | null
     const needsReview = params.get('needs_review')
+    const publishedFrom = params.get('published_from')
+    const publishedTo = params.get('published_to')
+    const visibility = params.get('visibility') ?? 'active'
     const parsedLimit = Number(params.get('limit') ?? 20)
     const parsedOffset = Number(params.get('offset') ?? 0)
     const limit = Number.isFinite(parsedLimit) && parsedLimit > 0
@@ -83,11 +160,12 @@ export const handlers = [
       ? Math.floor(parsedOffset)
       : 0
 
-    const filtered = publicationDetails.filter(({ publication, latest_analysis: analysis }) => {
+    const filtered = mutablePublicationDetails.filter(({ publication, latest_analysis: analysis }) => {
       const source = sources.find((item) => item.id === publication.source_id)
       const searchableText = [
         publication.title,
         publication.content,
+        ...publication.tags,
         analysis?.summary,
         analysis?.category,
         ...(analysis?.entities.map((entity) => entity.value) ?? []),
@@ -99,7 +177,11 @@ export const handlers = [
         (!sourceType || source?.type === sourceType) &&
         (!category || analysis?.category === category) &&
         (!proposedPriority || analysis?.proposed_priority === proposedPriority) &&
-        (needsReview === null || analysis?.needs_review === (needsReview === 'true'))
+        (needsReview === null || analysis?.needs_review === (needsReview === 'true')) &&
+        (!publishedFrom || publication.published_at >= publishedFrom) &&
+        (!publishedTo || publication.published_at <= publishedTo)
+        && (visibility === 'all'
+          || (visibility === 'hidden' ? publication.is_hidden : !publication.is_hidden))
       )
     })
 
@@ -115,29 +197,65 @@ export const handlers = [
 
   http.get('*/api/publications/:publicationId/history', ({ params }) => {
     if (params.publicationId !== publicationHistory.publication_id) {
-      const detail = publicationDetails.find(
+      const detail = mutablePublicationDetails.find(
         ({ publication }) => publication.id === params.publicationId,
       )
       return detail
-        ? HttpResponse.json({
+          ? HttpResponse.json({
             publication_id: detail.publication.id,
+            revisions: publicationRevisions.filter(
+              (revision) => revision.publication_id === detail.publication.id,
+            ),
             analyses: detail.latest_analysis ? [detail.latest_analysis] : [],
             decisions: [],
           })
         : notFound('Публикация')
     }
-    return HttpResponse.json({ ...publicationHistory, decisions })
+    return HttpResponse.json({
+      ...publicationHistory,
+      revisions: publicationRevisions.filter(
+        (revision) => revision.publication_id === publicationHistory.publication_id,
+      ),
+      analyses: publicationAnalyses,
+      decisions,
+    })
+  }),
+
+  http.post('*/api/publications/:publicationId/analyses', async ({ params, request }) => {
+    const detail = mutablePublicationDetails.find(
+      ({ publication }) => publication.id === params.publicationId,
+    )
+    if (!detail) return notFound('Публикация')
+    const body = await request.json() as AnalysisCreate
+    const previous = params.publicationId === publicationHistory.publication_id
+      ? publicationAnalyses
+      : detail.latest_analysis ? [detail.latest_analysis] : []
+    const analysis = {
+      ...(previous.at(-1) ?? publicationHistory.analyses.at(-1)!),
+      id: `analysis-mock-${publicationAnalyses.length + 1}`,
+      publication_id: String(params.publicationId),
+      version: (previous.at(-1)?.version ?? 0) + 1,
+      analyzer: body.analyzer ?? 'replay',
+      model: body.analyzer === 'live_llm' ? 'Qwen/Qwen3.5-0.8B' : 'demo-replay-v2',
+      created_at: new Date().toISOString(),
+    } satisfies AnalysisVersion
+    if (params.publicationId === publicationHistory.publication_id) {
+      publicationAnalyses = [...publicationAnalyses, analysis]
+    }
+    detail.latest_analysis = analysis
+    detail.publication.latest_analysis_id = analysis.id
+    return HttpResponse.json(analysis, { status: 201 })
   }),
 
   http.post('*/api/publications/:publicationId/decisions', async ({ params, request }) => {
-    const detail = publicationDetails.find(
+    const detail = mutablePublicationDetails.find(
       ({ publication }) => publication.id === params.publicationId,
     )
     if (!detail) return notFound('Публикация')
 
     const body = await request.json() as SpecialistDecisionCreate
     const availableAnalyses = params.publicationId === publicationHistory.publication_id
-      ? publicationHistory.analyses
+      ? publicationAnalyses
       : detail.latest_analysis ? [detail.latest_analysis] : []
     const analysis = availableAnalyses.find((item) => item.id === body.analysis_id)
     if (!analysis) {
@@ -163,7 +281,7 @@ export const handlers = [
   }),
 
   http.get('*/api/publications/:publicationId', ({ params }) => {
-    const detail = publicationDetails.find(
+    const detail = mutablePublicationDetails.find(
       ({ publication: item }) => item.id === params.publicationId,
     )
 
@@ -173,6 +291,82 @@ export const handlers = [
       .at(-1) ?? detail.latest_decision
     return HttpResponse.json({ ...detail, latest_decision: latestDecision })
   }),
+
+  http.post('*/api/publications', async ({ request }) => {
+    const body = await request.json() as PublicationCreate
+    const now = new Date().toISOString()
+    const id = `publication-manual-${nextPublicationId++}`
+    const detail: PublicationDetail = {
+      publication: {
+        id,
+        source_id: body.source_id,
+        external_id: id,
+        title: body.title,
+        original_url: body.original_url,
+        published_at: body.published_at,
+        collected_at: now,
+        content: body.content,
+        content_hash: `sha256:${'a'.repeat(64)}`,
+        is_demo: false,
+        latest_analysis_id: null,
+        latest_revision_id: `revision-manual-${nextPublicationId}`,
+        tags: body.tags ?? [],
+        is_hidden: false,
+        is_manual: true,
+        updated_at: now,
+      },
+      latest_analysis: null,
+      latest_decision: null,
+    }
+    mutablePublicationDetails = [...mutablePublicationDetails, detail]
+    return HttpResponse.json(detail, { status: 201 })
+  }),
+
+  http.patch('*/api/publications/:publicationId', async ({ params, request }) => {
+    const detail = mutablePublicationDetails.find(
+      ({ publication }) => publication.id === params.publicationId,
+    )
+    if (!detail) return notFound('Публикация')
+    const body = await request.json() as PublicationPatch
+    const previous = publicationRevisions
+      .filter((revision) => revision.publication_id === params.publicationId)
+      .at(-1)
+    const createdAt = new Date().toISOString()
+    const revision = {
+      id: `revision-mock-${publicationRevisions.length + 1}`,
+      publication_id: detail.publication.id,
+      version: (previous?.version ?? 0) + 1,
+      title: body.title ?? detail.publication.title,
+      tags: body.tags ?? detail.publication.tags,
+      is_hidden: body.is_hidden ?? detail.publication.is_hidden,
+      author_id: body.author_id,
+      created_at: createdAt,
+    } satisfies PublicationRevision
+    publicationRevisions = [...publicationRevisions, revision]
+    detail.publication = {
+      ...detail.publication,
+      title: revision.title,
+      tags: revision.tags,
+      is_hidden: revision.is_hidden,
+      latest_revision_id: revision.id,
+      updated_at: createdAt,
+    }
+    return HttpResponse.json(detail)
+  }),
+
+  http.post('*/api/auth/telegram', () => HttpResponse.json({
+    authenticated: true,
+    user: {
+      id: 42,
+      first_name: 'Test',
+      last_name: null,
+      username: 'test',
+      language_code: 'ru',
+      photo_url: null,
+    },
+    auth_date: new Date().toISOString(),
+    query_id: 'test-query',
+  })),
 
   http.get('*/api/regulatory-cases', () => HttpResponse.json(
     regulatoryCases.map((item) => ({
@@ -184,7 +378,7 @@ export const handlers = [
 
   http.put('*/api/regulatory-cases/:caseId/publications/:publicationId', ({ params }) => {
     const regulatoryCase = regulatoryCases.find((item) => item.id === params.caseId)
-    const publication = publicationDetails.find(
+    const publication = mutablePublicationDetails.find(
       ({ publication: item }) => item.id === params.publicationId,
     )
     if (!regulatoryCase) return notFound('Регуляторный кейс')
@@ -321,6 +515,8 @@ export const handlers = [
           status: 'failed' as const,
           collected: 0,
           created: 0,
+          already_seen: 0,
+          content_duplicates: 0,
           exact_duplicates: 0,
           semantic_candidates: 0,
           error: 'Архив временно недоступен',
@@ -331,6 +527,8 @@ export const handlers = [
             status: 'partial' as const,
             collected: 3,
             created: 1,
+            already_seen: 1,
+            content_duplicates: 0,
             exact_duplicates: 1,
             semantic_candidates: 1,
             error: 'Одна запись пропущена',
@@ -340,6 +538,8 @@ export const handlers = [
             status: 'success' as const,
             collected: 3,
             created: 2,
+            already_seen: 1,
+            content_duplicates: 0,
             exact_duplicates: 1,
             semantic_candidates: 1,
             error: null,
@@ -351,6 +551,8 @@ export const handlers = [
       sources: [result],
       collected: result.collected,
       created: result.created,
+      already_seen: result.already_seen,
+      content_duplicates: result.content_duplicates,
       exact_duplicates: result.exact_duplicates,
       semantic_candidates: result.semantic_candidates,
     } satisfies CollectionReport

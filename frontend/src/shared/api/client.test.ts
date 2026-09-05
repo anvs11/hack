@@ -5,6 +5,7 @@ import { ApiError, api } from './client'
 import { publicationHistory, regulatoryCases, sources } from '../../mocks/fixtures'
 import type {
   CollectionReport,
+  DuplicateCandidateList,
   LifecycleEvent,
   LifecycleEventCreate,
   PublicationList,
@@ -23,6 +24,27 @@ const emptyList = {
 } satisfies PublicationList
 
 describe('publication API client', () => {
+  it('preserves the backend error code for actionable UI messages', async () => {
+    server.use(
+      http.post('*/api/publications/pub-live/analyses', () => HttpResponse.json({
+        code: 'analyzer_unavailable',
+        message: 'Service is not configured',
+      }, { status: 422 })),
+    )
+
+    const error = await api.createPublicationAnalysis(
+      'pub-live',
+      { analyzer: 'live_llm' },
+    ).catch((value: unknown) => value)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect(error).toMatchObject({
+      code: 'analyzer_unavailable',
+      message: 'Service is not configured',
+      status: 422,
+    })
+  })
+
   it('encodes every defined list filter and omits undefined values', async () => {
     let receivedParams = new URLSearchParams()
     server.use(
@@ -69,6 +91,29 @@ describe('publication API client', () => {
 
     expect(new URL(requestedUrl).pathname).toBe('/api/publications/pub-001/history')
     expect(history.analyses).toHaveLength(2)
+  })
+
+  it('sends the explicit duplicate status and pagination offset', async () => {
+    let receivedParams = new URLSearchParams()
+    server.use(
+      http.get('*/api/duplicate-candidates', ({ request }) => {
+        receivedParams = new URL(request.url).searchParams
+        return HttpResponse.json({
+          items: [],
+          total: 0,
+          limit: 50,
+          offset: 100,
+        } satisfies DuplicateCandidateList)
+      }),
+    )
+
+    await api.listDuplicateCandidates('all', 100)
+
+    expect(Object.fromEntries(receivedParams)).toEqual({
+      status: 'all',
+      limit: '50',
+      offset: '100',
+    })
   })
 
   it('creates a typed specialist decision with JSON body', async () => {
@@ -206,12 +251,16 @@ describe('source API client', () => {
         status: 'success',
         collected: 3,
         created: 2,
+        already_seen: 1,
+        content_duplicates: 0,
         exact_duplicates: 1,
         semantic_candidates: 1,
         error: null,
       }],
       collected: 3,
       created: 2,
+      already_seen: 1,
+      content_duplicates: 0,
       exact_duplicates: 1,
       semantic_candidates: 1,
     } satisfies CollectionReport
@@ -226,6 +275,31 @@ describe('source API client', () => {
 
     expect(requestedPath).toBe('/api/sources/source%2Fencoded/collections')
     expect(result.sources[0].status).toBe('success')
+  })
+
+  it('collects all enabled live sources through the aggregate endpoint', async () => {
+    let requestedPath = ''
+    const report = {
+      status: 'completed',
+      started_at: '2026-09-05T08:00:00Z',
+      finished_at: '2026-09-05T08:00:05Z',
+      sources: [],
+      collected: 12,
+      created: 2,
+      already_seen: 9,
+      content_duplicates: 1,
+      exact_duplicates: 10,
+      semantic_candidates: 0,
+    } satisfies CollectionReport
+    server.use(http.post('*/api/collections', ({ request }) => {
+      requestedPath = new URL(request.url).pathname
+      return HttpResponse.json(report)
+    }))
+
+    const result = await api.collectEnabledSources()
+
+    expect(requestedPath).toBe('/api/collections')
+    expect(result.created).toBe(2)
   })
 
   it('throws ApiError for an unsuccessful source response', async () => {

@@ -12,20 +12,30 @@ import type {
 } from '../shared/api/types'
 
 const defaultCriteria = {
-  K1: 1,
-  K2: 1,
-  K3: 1,
-  K4: 1,
-  K5: 1,
-  K6: 1,
-  H1: false,
-  H2: false,
-  H3: false,
-  H4: false,
+  business_relevance: 1,
+  event_maturity: 1,
+  financial_impact: 1,
+  implementation_effort: 1,
+  risk_severity: 1,
+  action_urgency: 1,
+  state_support_or_accreditation_change: false,
+  service_or_legal_blocking_risk: false,
+  strategic_technology_status: false,
+  binding_legal_precedent: false,
 } as const
 
 const publication = (
-  value: Omit<Publication, 'collected_at' | 'content_hash' | 'is_demo'>,
+  value: Omit<
+    Publication,
+    | 'collected_at'
+    | 'content_hash'
+    | 'is_demo'
+    | 'latest_revision_id'
+    | 'tags'
+    | 'is_hidden'
+    | 'is_manual'
+    | 'updated_at'
+  >,
   hashDigit: string,
 ) =>
   ({
@@ -33,6 +43,11 @@ const publication = (
     collected_at: value.published_at,
     content_hash: `sha256:${hashDigit.repeat(64)}`,
     is_demo: true,
+    latest_revision_id: null,
+    tags: [],
+    is_hidden: false,
+    is_manual: false,
+    updated_at: value.published_at,
   }) satisfies Publication
 
 const analysis = (
@@ -148,7 +163,7 @@ export const analysis001v1 = analysis(
       'Опубликован демонстрационный проект требований. Документ находится на стадии общественного обсуждения.',
     category: 'regulation',
     proposed_priority: 'medium',
-    score: 6,
+    importance_score: 6,
     uncertainty: 0.24,
     needs_review: true,
   },
@@ -174,18 +189,18 @@ export const analysis001v2 = {
   category: 'regulation' as const,
   proposed_priority: 'high' as const,
   criteria: {
-    K1: 3,
-    K2: 2,
-    K3: 3,
-    K4: 1,
-    K5: 1,
-    K6: 0,
-    H1: false,
-    H2: false,
-    H3: false,
-    H4: false,
+    business_relevance: 3,
+    event_maturity: 2,
+    financial_impact: 3,
+    implementation_effort: 1,
+    risk_severity: 1,
+    action_urgency: 0,
+    state_support_or_accreditation_change: false,
+    service_or_legal_blocking_risk: false,
+    strategic_technology_status: false,
+    binding_legal_precedent: false,
   },
-  score: 10,
+  importance_score: 10,
   evidence: [
     {
       claim: 'Документ находится на обсуждении',
@@ -213,6 +228,7 @@ export const existingDecision = {
 
 export const publicationHistory = {
   publication_id: 'pub-001',
+  revisions: [],
   analyses: [analysis001v1, analysis001v2],
   decisions: [existingDecision],
 } satisfies PublicationHistory
@@ -233,7 +249,7 @@ export const publicationDetails = [
           'Заявлен рост спроса на отечественные облачные сервисы. Наблюдение относится к корпоративному сегменту.',
         category: 'trend',
         proposed_priority: 'medium',
-        score: 6,
+        importance_score: 6,
         uncertainty: 0.18,
         needs_review: false,
       },
@@ -251,7 +267,7 @@ export const publicationDetails = [
           'Telegram-архив содержит неподтверждённое сообщение. Материал нельзя использовать как подтверждение lifecycle.',
         category: 'regulation',
         proposed_priority: 'medium',
-        score: 5,
+        importance_score: 5,
         uncertainty: 0.72,
         needs_review: true,
       },
@@ -269,7 +285,7 @@ export const publicationDetails = [
           'Пресс-служба опровергла сообщение о массовом сбое. Материал относится к репутационному контуру.',
         category: 'reputation',
         proposed_priority: 'medium',
-        score: 7,
+        importance_score: 7,
         uncertainty: 0.3,
         needs_review: true,
       },
@@ -287,7 +303,7 @@ export const publicationDetails = [
           'Конкурент представил платформу мониторинга открытых источников для корпоративного рынка.',
         category: 'competitor',
         proposed_priority: 'medium',
-        score: 8,
+        importance_score: 8,
         uncertainty: 0.1,
         needs_review: false,
       },

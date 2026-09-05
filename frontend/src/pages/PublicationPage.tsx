@@ -5,13 +5,15 @@ import {
   useState,
 } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { api } from '../shared/api/client'
+import { ApiError, api } from '../shared/api/client'
 import type {
   AnalysisVersion,
   Category,
   Priority,
+  Publication,
   PublicationDetail,
   PublicationHistory,
+  PublicationPatch,
   RegulatoryCase,
   Source,
   SpecialistDecision,
@@ -20,8 +22,8 @@ import type {
 import { formatCategory, formatDate, formatPriority } from '../shared/format'
 import { PageState } from '../shared/PageState'
 import { RevealText } from '../shared/RevealText'
+import { getCurrentActorId } from '../shared/telegram/adapter'
 
-const DEMO_AUTHOR_ID = 'user-gr-001'
 const categories: Category[] = [
   'regulation',
   'reputation',
@@ -30,6 +32,60 @@ const categories: Category[] = [
   'unknown',
 ]
 const priorities: Priority[] = ['critical', 'high', 'medium', 'low', 'unknown']
+const importanceCriteria = [
+  {
+    key: 'business_relevance',
+    label: 'Релевантность бизнесу',
+    description: 'Насколько событие прямо влияет на компанию, продукты или клиентов.',
+  },
+  {
+    key: 'event_maturity',
+    label: 'Зрелость события',
+    description: 'От неподтверждённого сигнала до принятого решения или случившегося события.',
+  },
+  {
+    key: 'financial_impact',
+    label: 'Финансовое влияние',
+    description: 'Возможные расходы, потери, экономия или новая выручка.',
+  },
+  {
+    key: 'implementation_effort',
+    label: 'Сложность изменений',
+    description: 'Масштаб изменений в продукте, процессах и работе команды.',
+  },
+  {
+    key: 'risk_severity',
+    label: 'Тяжесть риска',
+    description: 'Юридические, репутационные и операционные последствия.',
+  },
+  {
+    key: 'action_urgency',
+    label: 'Срочность реакции',
+    description: 'Как быстро нужно проверить сигнал и принять решение.',
+  },
+] as const
+const hardSignals = [
+  {
+    key: 'state_support_or_accreditation_change',
+    label: 'Господдержка или аккредитация',
+    description: 'Меняются льготы, меры господдержки или условия ИТ-аккредитации.',
+  },
+  {
+    key: 'service_or_legal_blocking_risk',
+    label: 'Блокирующий правовой риск',
+    description: 'Есть риск запрета, блокировки сервиса или уголовной ответственности.',
+  },
+  {
+    key: 'strategic_technology_status',
+    label: 'Стратегический статус технологии',
+    description: 'ИИ, данные, ЦОД или ПО получают стратегически значимый статус.',
+  },
+  {
+    key: 'binding_legal_precedent',
+    label: 'Обязательный прецедент',
+    description: 'Решение суда или регулятора прямо применимо к бизнесу.',
+  },
+] as const
 
 type PageData = {
   detail: PublicationDetail
@@ -51,6 +107,7 @@ export function PublicationPage() {
   })
   const [selectedAnalysisId, setSelectedAnalysisId] = useState('')
   const [actionStatus, setActionStatus] = useState('')
+  const [analysisBusy, setAnalysisBusy] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -113,6 +170,55 @@ export function PublicationPage() {
     setActionStatus('Решение специалиста сохранено в истории.')
   }
 
+  async function refreshAfterMetadata(message: string) {
+    const [nextDetail, nextHistory] = await Promise.all([
+      api.getPublication(id),
+      api.getPublicationHistory(id),
+    ])
+    setState({
+      status: 'success',
+      data: { detail: nextDetail, history: nextHistory, sources },
+      error: null,
+    })
+    setActionStatus(message)
+  }
+
+  async function createAnalysis() {
+    setAnalysisBusy(true)
+    setActionStatus('')
+    try {
+      const analysis = await api.createPublicationAnalysis(publication.id, {
+        analyzer: publication.is_demo ? 'replay' : 'live_llm',
+      })
+      const [nextDetail, nextHistory] = await Promise.all([
+        api.getPublication(id),
+        api.getPublicationHistory(id),
+      ])
+      setState({
+        status: 'success',
+        data: { detail: nextDetail, history: nextHistory, sources },
+        error: null,
+      })
+      setSelectedAnalysisId(analysis.id)
+      setActionStatus(`AI-анализ v${analysis.version} сохранён в истории.`)
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'analyzer_unavailable') {
+        setActionStatus(
+          'AI-анализ пока недоступен: на сервере не подключён быстрый inference. ' +
+          'Публикация сохранена, данные не потеряны.',
+        )
+      } else {
+        setActionStatus(
+          error instanceof Error
+            ? `AI-анализ не создан: ${error.message}`
+            : 'AI-анализ не создан.',
+        )
+      }
+    } finally {
+      setAnalysisBusy(false)
+    }
+  }
+
   return (
     <article className="detail-page publication-workspace">
       <Link className="back-link" to="/feed"><span aria-hidden="true">←</span> Вернуться в ленту</Link>
@@ -125,9 +231,37 @@ export function PublicationPage() {
         <a className="source-link" href={publication.original_url} target="_blank" rel="noreferrer">
           Открыть первоисточник ↗
         </a>
+        {publication.tags.length > 0 && (
+          <div className="tag-row">
+            {publication.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}
+          </div>
+        )}
       </header>
 
       {actionStatus && <p className="action-message" role="status">{actionStatus}</p>}
+
+      <PublicationMetadataEditor
+        key={publication.latest_revision_id ?? publication.id}
+        publication={publication}
+        onSaved={refreshAfterMetadata}
+      />
+
+      <section className="analysis-launch" aria-label="Запуск AI-анализа">
+        <div>
+          <p className="eyebrow">Новая неизменяемая версия</p>
+          <p>Исходная публикация и прошлые результаты останутся в истории.</p>
+        </div>
+        <button
+          className="primary-action"
+          disabled={analysisBusy}
+          onClick={createAnalysis}
+          type="button"
+        >
+          {analysisBusy
+            ? 'Анализируем…'
+            : latestAnalysis ? 'Повторить AI-анализ' : 'Запустить AI-анализ'}
+        </button>
+      </section>
 
       <div className="detail-grid">
         <section className="content-panel">
@@ -153,7 +287,7 @@ export function PublicationPage() {
             <h2 id="history-heading">История анализа и решений</h2>
           </div>
           <span className="history-count">
-            {history.analyses.length} AI · {history.decisions.length} решений
+            {history.revisions.length} правок · {history.analyses.length} AI · {history.decisions.length} решений
           </span>
         </div>
         <History
@@ -192,9 +326,6 @@ export function PublicationPage() {
 }
 
 function AnalysisDetails({ analysis }: { analysis: AnalysisVersion }) {
-  const criteriaNumbers = (['K1', 'K2', 'K3', 'K4', 'K5', 'K6'] as const)
-  const hardFlags = (['H1', 'H2', 'H3', 'H4'] as const)
-
   return (
     <section className="analysis-panel full-analysis" aria-labelledby="analysis-heading">
       <div className="panel-index" aria-hidden="true">02</div>
@@ -218,7 +349,12 @@ function AnalysisDetails({ analysis }: { analysis: AnalysisVersion }) {
         </span>
       </div>
       <dl className="analysis-stats">
-        <div><dt>Балл</dt><dd>{analysis.score}</dd></div>
+        <div>
+          <dt>Индекс важности</dt>
+          <dd>{analysis.importance_score === null
+            ? 'Не рассчитан'
+            : `${analysis.importance_score} из 18`}</dd>
+        </div>
         <div><dt>Неопределённость</dt><dd>{Math.round(analysis.uncertainty * 100)}%</dd></div>
         <div><dt>Проверка</dt><dd>{analysis.needs_review ? 'Нужна' : 'Не нужна'}</dd></div>
       </dl>
@@ -240,18 +376,29 @@ function AnalysisDetails({ analysis }: { analysis: AnalysisVersion }) {
       </div>
 
       <section className="criteria-section">
-        <h3>Критерии K1–K6</h3>
+        <h3>Из чего складывается важность</h3>
+        <p className="criteria-hint">
+          Каждый критерий оценивается от 0 до 3. Сумма определяет AI-приоритет,
+          а окончательное решение остаётся за специалистом.
+        </p>
         <dl className="criteria-grid">
-          {criteriaNumbers.map((key) => (
-            <div key={key}><dt>{key}</dt><dd>{analysis.criteria[key]}</dd></div>
+          {importanceCriteria.map(({ key, label, description }) => (
+            <div key={key}>
+              <dt>{label}</dt>
+              <dd>{analysis.criteria[key] === null
+                ? 'Нет данных'
+                : `${analysis.criteria[key]} / 3`}</dd>
+              <p>{description}</p>
+            </div>
           ))}
         </dl>
-        <h3>Флаги H1–H4</h3>
+        <h3>Сигналы обязательной проверки</h3>
         <dl className="flags-grid">
-          {hardFlags.map((key) => (
+          {hardSignals.map(({ key, label, description }) => (
             <div key={key}>
-              <dt>{key}</dt>
-              <dd>{analysis.criteria[key] ? 'Да' : 'Нет'} · {String(analysis.criteria[key])}</dd>
+              <dt>{label}</dt>
+              <dd>{analysis.criteria[key] ? 'Есть' : 'Нет'}</dd>
+              <p>{description}</p>
             </div>
           ))}
         </dl>
@@ -357,7 +504,115 @@ function History({
           </ol>
         ) : <p className="inline-empty" role="status">Решений специалиста ещё нет.</p>}
       </section>
+      <section aria-labelledby="revision-history-heading">
+        <h3 id="revision-history-heading">Правки карточки</h3>
+        {history.revisions.length ? (
+          <ol className="decision-history-list">
+            {history.revisions.map((revision) => (
+              <li key={revision.id}>
+                <span>v{revision.version} · {formatDate(revision.created_at)}</span>
+                <strong>{revision.title}</strong>
+                <p>Автор: {revision.author_id}</p>
+                <p>Теги: {revision.tags.join(', ') || 'нет'}</p>
+                <p>В ленте: {revision.is_hidden ? 'скрыта' : 'видна'}</p>
+              </li>
+            ))}
+          </ol>
+        ) : <p className="inline-empty">Правок карточки ещё нет.</p>}
+      </section>
     </div>
+  )
+}
+
+function PublicationMetadataEditor({
+  publication,
+  onSaved,
+}: {
+  publication: Publication
+  onSaved: (message: string) => Promise<void>
+}) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [title, setTitle] = useState(publication.title)
+  const [tags, setTags] = useState(publication.tags.join(', '))
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  async function save(patch: Omit<PublicationPatch, 'author_id'>, message: string) {
+    if (isSubmitting) return
+    setIsSubmitting(true)
+    setError('')
+    try {
+      await api.updatePublication(publication.id, {
+        ...patch,
+        author_id: getCurrentActorId(),
+      })
+      setIsEditing(false)
+      await onSaved(message)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Не удалось изменить публикацию')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const normalizedTags = [...new Set(
+      tags.split(',').map((tag) => tag.trim()).filter(Boolean),
+    )]
+    await save(
+      { title: title.trim(), tags: normalizedTags },
+      'Заголовок и теги сохранены новой версией.',
+    )
+  }
+
+  return (
+    <section className="metadata-editor" aria-labelledby="metadata-editor-heading">
+      <div className="section-heading compact-heading">
+        <div>
+          <p className="eyebrow">Управление карточкой</p>
+          <h2 id="metadata-editor-heading">Метаданные и видимость</h2>
+        </div>
+        <div className="dialog-actions">
+          <button className="secondary-action" type="button" onClick={() => setIsEditing((value) => !value)}>
+            {isEditing ? 'Отменить правку' : 'Изменить заголовок и теги'}
+          </button>
+          <button
+            className="secondary-action"
+            type="button"
+            disabled={isSubmitting}
+            onClick={() => save(
+              { is_hidden: !publication.is_hidden },
+              publication.is_hidden ? 'Публикация возвращена в ленту.' : 'Публикация скрыта из ленты.',
+            )}
+          >
+            {publication.is_hidden ? 'Вернуть в ленту' : 'Скрыть из ленты'}
+          </button>
+        </div>
+      </div>
+      {isEditing && (
+        <form className="decision-form" onSubmit={submit}>
+          <label className="form-field form-field-wide">
+            <span>Заголовок</span>
+            <input value={title} required onChange={(event) => setTitle(event.target.value)} />
+          </label>
+          <label className="form-field form-field-wide">
+            <span>Теги через запятую</span>
+            <input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="НПА, ИТ, гранты" />
+          </label>
+          <div className="decision-actions form-field-wide">
+            <div>
+              <strong>Исходный материал не изменится</strong>
+              <span>Правка попадёт в append-only историю.</span>
+            </div>
+            <button type="submit" disabled={isSubmitting || !title.trim()}>
+              {isSubmitting ? 'Сохраняем…' : 'Сохранить правку'}
+            </button>
+          </div>
+        </form>
+      )}
+      {error && <p className="form-error" role="alert">{error}</p>}
+    </section>
   )
 }
 
@@ -398,7 +653,7 @@ function DecisionPanel({
       final_category: category,
       final_priority: priority,
       comment: comment.trim() || null,
-      author_id: DEMO_AUTHOR_ID,
+      author_id: getCurrentActorId(),
     }
 
     try {
@@ -417,8 +672,8 @@ function DecisionPanel({
       <div className="form-context">
         <span>Analysis ID</span>
         <strong>{analysis.id} · v{analysis.version}</strong>
-        <span>Demo user</span>
-        <strong>{DEMO_AUTHOR_ID}</strong>
+        <span>Автор действия</span>
+        <strong>{getCurrentActorId()}</strong>
       </div>
       <label className="form-field form-field-wide">
         <span>Итоговое саммари</span>

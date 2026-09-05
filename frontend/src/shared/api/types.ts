@@ -1,7 +1,11 @@
 import type { components, operations } from './schema'
 
 export type Publication = components['schemas']['Publication']
+export type PublicationCreate = components['schemas']['PublicationCreate']
+export type PublicationPatch = components['schemas']['PublicationPatch']
+export type PublicationRevision = components['schemas']['PublicationRevision']
 export type AnalysisVersion = components['schemas']['AnalysisVersion']
+export type AnalysisCreate = components['schemas']['AnalysisCreate']
 export type PublicationDetail = components['schemas']['PublicationDetail']
 export type PublicationList = components['schemas']['PublicationList']
 export type PublicationHistory = components['schemas']['PublicationHistory']
@@ -22,7 +26,14 @@ export type ApiErrorBody = components['schemas']['Error']
 export type Category = components['schemas']['Category']
 export type Priority = components['schemas']['Priority']
 export type DecisionStatus = components['schemas']['DecisionStatus']
+export type DuplicateCandidate = components['schemas']['DuplicateCandidate']
+export type DuplicateCandidateList = components['schemas']['DuplicateCandidateList']
+export type DuplicateReviewCreate = components['schemas']['DuplicateReviewCreate']
+export type DuplicateStatus = components['schemas']['DuplicateStatus']
+export type DuplicateVerdict = components['schemas']['DuplicateVerdict']
 export type SourceType = components['schemas']['SourceType']
+export type TelegramAuthRequest = components['schemas']['TelegramAuthRequest']
+export type TelegramAuthResponse = components['schemas']['TelegramAuthResponse']
 export type PublicationQuery = NonNullable<
   operations['listPublications']['parameters']['query']
 >

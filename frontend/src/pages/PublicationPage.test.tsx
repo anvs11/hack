@@ -47,12 +47,12 @@ describe('publication analysis card', () => {
     expect(screen.getByText('12%')).toBeInTheDocument()
     expect(screen.getByText('AI-приоритет · Высокий')).toBeInTheDocument()
 
-    const k6 = screen.getByText('K6').closest('div')
-    expect(k6).not.toBeNull()
-    expect(within(k6!).getByText('0')).toBeInTheDocument()
-    const h1 = screen.getByText('H1').closest('div')
-    expect(h1).not.toBeNull()
-    expect(within(h1!).getByText('Нет · false')).toBeInTheDocument()
+    const urgency = screen.getByText('Срочность реакции').closest('div')
+    expect(urgency).not.toBeNull()
+    expect(within(urgency!).getByText('0 / 3')).toBeInTheDocument()
+    const stateSupport = screen.getByText('Господдержка или аккредитация').closest('div')
+    expect(stateSupport).not.toBeNull()
+    expect(within(stateSupport!).getByText('Нет')).toBeInTheDocument()
   })
 
   it('shows the honest empty state and disables specialist decisions without analysis', async () => {
@@ -64,6 +64,7 @@ describe('publication analysis card', () => {
     } satisfies PublicationDetail
     const history = {
       publication_id: 'pub-001',
+      revisions: [],
       analyses: [],
       decisions: [],
     } satisfies PublicationHistory
@@ -100,6 +101,42 @@ describe('publication analysis card', () => {
     expect(screen.getByText('Финальное решение специалиста · v1')).toBeInTheDocument()
     expect(screen.getByText('Проверено по первоисточнику.')).toBeInTheDocument()
     expect(screen.getAllByText('Финальный приоритет').length).toBeGreaterThan(0)
+  })
+
+  it('creates a new immutable analysis version and refreshes history', async () => {
+    renderPublication()
+    const button = await screen.findByRole('button', { name: 'Повторить AI-анализ' })
+
+    fireEvent.click(button)
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'AI-анализ v3 сохранён в истории.',
+    )
+    expect(screen.getByRole('button', { name: /v3/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  })
+
+  it('explains unavailable live inference without exposing environment variable names', async () => {
+    server.use(
+      http.get('*/api/publications/pub-001', () => HttpResponse.json({
+        ...publicationDetails[0],
+        publication: { ...publicationDetails[0].publication, is_demo: false },
+      })),
+      http.post('*/api/publications/pub-001/analyses', () => HttpResponse.json({
+        code: 'analyzer_unavailable',
+        message: 'Missing HACK_LLM_API_KEY',
+      }, { status: 422 })),
+    )
+    renderPublication()
+    const button = await screen.findByRole('button', { name: 'Повторить AI-анализ' })
+
+    fireEvent.click(button)
+
+    const status = await screen.findByRole('status')
+    expect(status).toHaveTextContent('на сервере не подключён быстрый inference')
+    expect(status).not.toHaveTextContent('HACK_LLM_API_KEY')
   })
 })
 
