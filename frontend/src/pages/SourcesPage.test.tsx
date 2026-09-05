@@ -208,6 +208,60 @@ describe('source create and edit dialogs', () => {
 })
 
 describe('source card actions', () => {
+  it('runs all live sources and shows transparent aggregate statistics', async () => {
+    const liveSource = {
+      ...sources[0],
+      id: 'source-live-rss',
+      name: 'Live RSS',
+      is_demo: false,
+    } satisfies Source
+    const report = {
+      status: 'completed',
+      started_at: '2026-09-05T08:00:00Z',
+      finished_at: '2026-09-05T08:00:05Z',
+      sources: [{
+        source_id: liveSource.id,
+        status: 'success',
+        collected: 12,
+        created: 2,
+        already_seen: 9,
+        content_duplicates: 1,
+        exact_duplicates: 10,
+        semantic_candidates: 0,
+        error: null,
+      }],
+      collected: 12,
+      created: 2,
+      already_seen: 9,
+      content_duplicates: 1,
+      exact_duplicates: 10,
+      semantic_candidates: 0,
+    } satisfies CollectionReport
+    let calls = 0
+    server.use(
+      http.get('*/api/sources', () => HttpResponse.json([liveSource, sources[1]])),
+      http.post('*/api/collections', async () => {
+        calls += 1
+        await delay(80)
+        return HttpResponse.json(report)
+      }),
+    )
+    renderSources()
+
+    const collectAll = await screen.findByRole('button', { name: 'Собрать live · 1' })
+    fireEvent.click(collectAll)
+    fireEvent.click(collectAll)
+
+    expect(screen.getByRole('button', { name: 'Собираем все…' })).toBeDisabled()
+    const result = await screen.findByRole('status', { name: 'Результат сбора' })
+    expect(result).toHaveTextContent('Общий сбор · 1 источников')
+    expect(within(result).getByText('Получено от источника').parentElement).toHaveTextContent('12')
+    expect(within(result).getByText('Добавлено новых').parentElement).toHaveTextContent('2')
+    expect(within(result).getByText('Уже были в базе').parentElement).toHaveTextContent('9')
+    expect(within(result).getByText('Совпал только текст').parentElement).toHaveTextContent('1')
+    expect(calls).toBe(1)
+  })
+
   it('toggles from active to paused and back, updates the counter, and blocks repeats', async () => {
     let enabled = true
     let calls = 0
@@ -244,10 +298,11 @@ describe('source card actions', () => {
     expect(within(card).getByRole('button', { name: 'Запускаем…' })).toBeDisabled()
     const result = await within(card).findByRole('status', { name: 'Результат сбора' })
     expect(result).toHaveTextContent('completed')
-    expect(within(result).getByText('Collected').parentElement).toHaveTextContent('3')
-    expect(within(result).getByText('Created').parentElement).toHaveTextContent('2')
-    expect(within(result).getByText('Exact duplicates').parentElement).toHaveTextContent('1')
-    expect(within(result).getByText('Semantic candidates').parentElement).toHaveTextContent('1')
+    expect(within(result).getByText('Получено от источника').parentElement).toHaveTextContent('3')
+    expect(within(result).getByText('Добавлено новых').parentElement).toHaveTextContent('2')
+    expect(within(result).getByText('Уже были в базе').parentElement).toHaveTextContent('1')
+    expect(within(result).getByText('Совпал только текст').parentElement).toHaveTextContent('0')
+    expect(within(result).getByText('Кандидаты по смыслу').parentElement).toHaveTextContent('1')
     await waitFor(() => expect(within(card).getAllByText(formatDate('2026-09-04T12:01:05Z'))).toHaveLength(2))
     expect(within(card).getByText('Ошибок нет')).toBeInTheDocument()
   })
@@ -275,12 +330,16 @@ describe('source card actions', () => {
         status: 'partial',
         collected: 2,
         created: 1,
+        already_seen: 0,
+        content_duplicates: 0,
         exact_duplicates: 0,
         semantic_candidates: 1,
         error: 'Одна запись пропущена',
       }],
       collected: 2,
       created: 1,
+      already_seen: 0,
+      content_duplicates: 0,
       exact_duplicates: 0,
       semantic_candidates: 1,
     } satisfies CollectionReport

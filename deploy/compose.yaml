@@ -1,0 +1,74 @@
+services:
+  catalog:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    command: ["python", "scripts/bootstrap_server_data.py", "--db", "/data/app.sqlite3"]
+    volumes:
+      - app-data:/data
+    restart: "no"
+
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    environment:
+      HACK_DATABASE_URL: sqlite:////data/app.sqlite3
+      HACK_TELEGRAM_BOT_TOKEN_FILE: /run/secrets/telegram_bot_token
+      HACK_TELEGRAM_AUTH_MAX_AGE_SECONDS: ${HACK_TELEGRAM_AUTH_MAX_AGE_SECONDS:-86400}
+      HACK_LLM_PROVIDER: ${HACK_LLM_PROVIDER:-openai_compatible}
+      HACK_LLM_API_BASE_URL: ${HACK_LLM_API_BASE_URL:-}
+      HACK_LLM_API_KEY_FILE: /run/secrets/llm_api_key
+      HACK_LLM_API_MODEL_ID: ${HACK_LLM_API_MODEL_ID:-Qwen/Qwen3.5-0.8B}
+      HACK_LLM_API_TIMEOUT_SECONDS: ${HACK_LLM_API_TIMEOUT_SECONDS:-120}
+      HACK_LLM_MAX_NEW_TOKENS: ${HACK_LLM_MAX_NEW_TOKENS:-1024}
+      HACK_LLM_REASONING_EFFORT: ${HACK_LLM_REASONING_EFFORT:-}
+    volumes:
+      - app-data:/data
+    secrets:
+      - llm_api_key
+      - telegram_bot_token
+    depends_on:
+      catalog:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  collector:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    command: ["python", "scripts/run_collection_worker.py", "--db", "/data/app.sqlite3", "--interval", "${HACK_COLLECTION_INTERVAL_SECONDS:-1800}"]
+    volumes:
+      - app-data:/data
+    depends_on:
+      catalog:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  app-data:
+  caddy-data:
+  caddy-config:
+
+secrets:
+  llm_api_key:
+    file: ./secrets/llm_api_key
+  telegram_bot_token:
+    file: ./secrets/telegram_bot_token

@@ -1,0 +1,29 @@
+{
+  "kind": "telegram_auth_plumbing_smoke",
+  "quality_claim_allowed": false,
+  "checked_at": "2026-09-05T09:18:00Z",
+  "bot": {
+    "id": 8949447669,
+    "username": "reg_radar_product_hack_bot",
+    "name": "RegRadar"
+  },
+  "secret_storage": {
+    "path_committed": false,
+    "file_mode": "0600",
+    "git_ignored": true
+  },
+  "get_me": {
+    "ok": true
+  },
+  "signed_init_data_smoke": {
+    "http_status": 200,
+    "authenticated": true,
+    "synthetic_user_id": 4242,
+    "query_id": "AAHackSmoke"
+  },
+  "not_tested": [
+    "launch_inside_telegram_client",
+    "public_https_web_app_url",
+    "botfather_menu_button"
+  ]
+}

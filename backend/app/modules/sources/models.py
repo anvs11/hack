@@ -42,3 +42,38 @@ class DuplicateCandidate(Base):
     similarity: Mapped[float] = mapped_column(Float, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class DuplicateReview(Base):
+    """Append-only human verdict for a semantic duplicate candidate."""
+
+    __tablename__ = "duplicate_reviews"
+    __table_args__ = (UniqueConstraint("candidate_id", "version"),)
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    candidate_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("duplicate_candidates.id"),
+        nullable=False,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    verdict: Mapped[str] = mapped_column(Text, nullable=False)
+    reviewer_id: Mapped[str] = mapped_column(Text, nullable=False)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class PublicationEmbedding(Base):
+    """Cached model vector for one immutable publication content hash."""
+
+    __tablename__ = "publication_embeddings"
+
+    publication_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("publications.id"),
+        primary_key=True,
+    )
+    model: Mapped[str] = mapped_column(Text, primary_key=True)
+    content_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    vector_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)

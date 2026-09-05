@@ -17,8 +17,8 @@
   ],
   "category": "regulation",
   "proposed_priority": "high",
-  "criteria": {"K1": 3, "K2": 2, "K3": 2, "K4": 1, "K5": 1, "K6": 1, "H1": false, "H2": false, "H3": false, "H4": false},
-  "score": 10,
+  "criteria": {"business_relevance": 3, "event_maturity": 2, "financial_impact": 2, "implementation_effort": 1, "risk_severity": 1, "action_urgency": 1, "state_support_or_accreditation_change": false, "service_or_legal_blocking_risk": false, "strategic_technology_status": false, "binding_legal_precedent": false},
+  "importance_score": 10,
   "evidence": [
     {"claim": "Документ находится на обсуждении", "quote": "установил срок общественного обсуждения"}
   ],

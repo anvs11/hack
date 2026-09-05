@@ -54,6 +54,12 @@ type CardActionState = {
   report?: CollectionReport
 }
 
+type AllCollectionState = {
+  pending: boolean
+  error: string
+  report?: CollectionReport
+}
+
 export function SourcesPage() {
   const [state, setState] = useState<LoadState>({
     status: 'loading',
@@ -62,8 +68,13 @@ export function SourcesPage() {
   })
   const [actionStatus, setActionStatus] = useState('')
   const [cardActions, setCardActions] = useState<Record<string, CardActionState>>({})
+  const [allCollection, setAllCollection] = useState<AllCollectionState>({
+    pending: false,
+    error: '',
+  })
   const loadVersionRef = useRef(0)
   const pendingActionsRef = useRef(new Set<string>())
+  const allCollectionPendingRef = useRef(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -161,7 +172,39 @@ export function SourcesPage() {
     }
   }
 
+  async function handleCollectAll() {
+    if (allCollectionPendingRef.current) return
+    allCollectionPendingRef.current = true
+    setAllCollection({ pending: true, error: '' })
+    setActionStatus('')
+
+    try {
+      const report = await api.collectEnabledSources()
+      setAllCollection({ pending: false, error: '', report })
+      try {
+        await refreshSources()
+      } catch (refreshError) {
+        setAllCollection({
+          pending: false,
+          report,
+          error: refreshError instanceof Error
+            ? `Сбор завершён, но статусы источников не обновились: ${refreshError.message}`
+            : 'Сбор завершён, но статусы источников не обновились.',
+        })
+      }
+    } catch (error) {
+      setAllCollection({
+        pending: false,
+        error: error instanceof Error ? error.message : 'Не удалось запустить общий сбор',
+      })
+    } finally {
+      allCollectionPendingRef.current = false
+      setAllCollection((current) => ({ ...current, pending: false }))
+    }
+  }
+
   const activeCount = state.data.filter((source) => source.enabled).length
+  const liveActiveCount = state.data.filter((source) => source.enabled && !source.is_demo).length
 
   return (
     <section>
@@ -174,6 +217,16 @@ export function SourcesPage() {
           </p>
         </div>
         <div className="sources-heading-actions">
+          {liveActiveCount > 0 && (
+            <button
+              type="button"
+              className="secondary-action"
+              disabled={allCollection.pending}
+              onClick={handleCollectAll}
+            >
+              {allCollection.pending ? 'Собираем все…' : `Собрать live · ${liveActiveCount}`}
+            </button>
+          )}
           <SourceDialogTrigger
             mode="create"
             onSaved={(source) => {
@@ -187,6 +240,8 @@ export function SourcesPage() {
       </header>
 
       {actionStatus && <p className="action-message" role="status">{actionStatus}</p>}
+      {allCollection.error && <p className="form-error" role="alert">{allCollection.error}</p>}
+      {allCollection.report && <CollectionResult report={allCollection.report} />}
 
       {state.status === 'loading' ? (
         <PageState kind="loading" title="Загружаем источники" message="Проверяем состояние подключений." />
@@ -475,9 +530,13 @@ function SourceFormDialog({
   )
 }
 
-function CollectionResult({ report, sourceId }: { report: CollectionReport; sourceId: string }) {
-  const result = report.sources.find((item) => item.source_id === sourceId) ?? report.sources[0]
-  const isSuccessful = report.status === 'completed' && result?.status === 'success'
+function CollectionResult({ report, sourceId }: { report: CollectionReport; sourceId?: string }) {
+  const result = sourceId
+    ? report.sources.find((item) => item.source_id === sourceId) ?? report.sources[0]
+    : undefined
+  const failedSources = report.sources.filter((item) => item.error)
+  const isSuccessful = report.status === 'completed'
+    && (result === undefined || result.status === 'success')
 
   return (
     <section
@@ -486,16 +545,22 @@ function CollectionResult({ report, sourceId }: { report: CollectionReport; sour
       aria-label="Результат сбора"
     >
       <div className="collection-result-heading">
-        <strong>Сбор завершён</strong>
+        <strong>{sourceId ? 'Сбор завершён' : `Общий сбор · ${report.sources.length} источников`}</strong>
         <span>Статус · {report.status}</span>
       </div>
       <dl>
-        <div><dt>Collected</dt><dd>{report.collected}</dd></div>
-        <div><dt>Created</dt><dd>{report.created}</dd></div>
-        <div><dt>Exact duplicates</dt><dd>{report.exact_duplicates}</dd></div>
-        <div><dt>Semantic candidates</dt><dd>{report.semantic_candidates}</dd></div>
+        <div><dt>Получено от источника</dt><dd>{report.collected}</dd></div>
+        <div><dt>Добавлено новых</dt><dd>{report.created}</dd></div>
+        <div><dt>Уже были в базе</dt><dd>{report.already_seen}</dd></div>
+        <div><dt>Совпал только текст</dt><dd>{report.content_duplicates}</dd></div>
+        <div><dt>Кандидаты по смыслу</dt><dd>{report.semantic_candidates}</dd></div>
       </dl>
       {result?.error && <p className="error-text">{result.error}</p>}
+      {!sourceId && failedSources.map((item) => (
+        <p className="error-text" key={item.source_id}>
+          {item.source_id}: {item.error}
+        </p>
+      ))}
     </section>
   )
 }

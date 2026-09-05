@@ -11,10 +11,12 @@ from sqlalchemy import Engine
 from backend.app.db import build_session_factory, create_schema, default_engine
 from backend.app.errors import install_error_handlers
 from backend.app.modules.analysis.router import router as analysis_router
+from backend.app.modules.auth.router import router as auth_router
 from backend.app.modules.decisions.router import router as decisions_router
 from backend.app.modules.publications.router import router as publications_router
 from backend.app.modules.regulatory_cases.router import router as regulatory_cases_router
 from backend.app.modules.sources.router import router as sources_router
+from backend.app.modules.sources.dedup_router import router as dedup_router
 
 
 LOCAL_FRONTEND_ORIGINS = (
@@ -39,7 +41,7 @@ def create_app(database_engine: Engine | None = None) -> FastAPI:
 
     application = FastAPI(
         title="PR/GR AI Analytics API",
-        version="0.2.0",
+        version="0.4.0",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -55,8 +57,10 @@ def create_app(database_engine: Engine | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     install_error_handlers(application)
+    application.include_router(auth_router)
     application.include_router(analysis_router)
     application.include_router(decisions_router)
+    application.include_router(dedup_router)
     application.include_router(publications_router)
     application.include_router(regulatory_cases_router)
     application.include_router(sources_router)

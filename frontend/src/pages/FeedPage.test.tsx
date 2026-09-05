@@ -159,6 +159,22 @@ describe('analyst feed', () => {
     expect(screen.getByText('Активно: 0')).toBeInTheDocument()
   })
 
+  it('stores inclusive date boundaries in the URL and filters the feed', async () => {
+    const router = renderFeed()
+    await screen.findByLabelText('Дата с')
+
+    fireEvent.change(screen.getByLabelText('Дата с'), { target: { value: '2026-09-02' } })
+    fireEvent.change(screen.getByLabelText('Дата по'), { target: { value: '2026-09-02' } })
+
+    await waitFor(() => expect(router.state.location.search).toContain(
+      'published_from=2026-09-02T00%3A00%3A00.000Z',
+    ))
+    expect(router.state.location.search).toContain(
+      'published_to=2026-09-02T23%3A59%3A59.999Z',
+    )
+    expect(screen.getByText('Активно: 2')).toBeInTheDocument()
+  })
+
   it('shows no-results separately and offers to reset criteria', async () => {
     const router = renderFeed('/feed?q=%D0%BD%D0%B5%D1%81%D1%83%D1%89%D0%B5%D1%81%D1%82%D0%B2%D1%83%D1%8E%D1%89%D0%B8%D0%B9')
 

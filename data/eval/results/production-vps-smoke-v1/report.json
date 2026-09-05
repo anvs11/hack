@@ -1,0 +1,90 @@
+{
+  "observed_at": "2026-09-05T09:40:00Z",
+  "environment": {
+    "provider": "CloudCompute",
+    "hostname": "regradar-demo",
+    "public_ip": "209.250.246.26",
+    "public_url": "https://regradar-demo.209-250-246-26.sslip.io",
+    "os": "Ubuntu 24.04",
+    "vcpu": 1,
+    "ram_mib": 955,
+    "swap_gib": 2.3,
+    "disk_gib": 23
+  },
+  "checks": {
+    "backend_tests_local": {
+      "passed": 176,
+      "warnings": 2
+    },
+    "https": {
+      "health_status": 200,
+      "health_body": {"status": "ok"},
+      "certificate_issuer": "Let's Encrypt YE2",
+      "certificate_not_after": "2026-12-04T08:36:01Z"
+    },
+    "catalog": {
+      "seed_sources": 5,
+      "seed_publications": 10,
+      "seed_analyses": 10,
+      "live_sources_created": 13
+    },
+    "first_collection": {
+      "sources_successful": 13,
+      "collected": 311,
+      "created": 310,
+      "already_seen": 0,
+      "content_duplicates": 1
+    },
+    "immediate_repeat_collection": {
+      "sources_successful": 13,
+      "collected": 311,
+      "created": 0,
+      "already_seen": 310,
+      "content_duplicates": 1
+    },
+    "live_analysis": {
+      "publication_id": "publication-d228358b42ed47c391dfaaa555dfdd07",
+      "analysis_id": "analysis-0e1406e2b8534ecd9b8861c5055bcea1",
+      "model": "qwen/qwen3.8-flash",
+      "http_status": 201,
+      "latency_seconds": 6.00116,
+      "summary_sentences": 3,
+      "grounded_evidence_items": 2,
+      "importance_score": null,
+      "proposed_priority": "unknown",
+      "needs_review": true
+    },
+    "telegram": {
+      "signed_init_data_http_status": 200,
+      "authenticated": true,
+      "menu_button_configured": true,
+      "menu_button_url": "https://regradar-demo.209-250-246-26.sslip.io/feed"
+    },
+    "publication_crud": {
+      "create_http_status": 201,
+      "patch_http_status": 200,
+      "history_http_status": 200,
+      "revision_count": 2,
+      "test_publication_hidden": true
+    },
+    "persistence": {
+      "docker_service_enabled": true,
+      "backend_restart_policy": "unless-stopped",
+      "collector_restart_policy": "unless-stopped",
+      "web_restart_policy": "unless-stopped",
+      "collector_interval_seconds": 1800
+    },
+    "ssh_security": {
+      "public_key_reconnect_verified": true,
+      "password_authentication": false,
+      "keyboard_interactive_authentication": false,
+      "root_login": "public-key-only"
+    }
+  },
+  "limitations": [
+    "One successful live analysis is not a quality benchmark or SLA measurement.",
+    "The first 512-token live attempt returned validation_error; deployment now uses 1024 output tokens.",
+    "Persistence was verified from service configuration, not by rebooting the VPS.",
+    "Telegram auth used a signed synthetic initData payload; the menu button still needs a manual in-client smoke-test."
+  ]
+}

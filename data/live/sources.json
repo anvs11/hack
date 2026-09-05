@@ -1,0 +1,15 @@
+[
+  {"id":"tg-cit-gov","name":"Цифровые индустриальные технологии — дайджест","type":"telegram","url":"https://t.me/cit_gov","enabled":true},
+  {"id":"tg-rfrit","name":"РФРИТ","type":"telegram","url":"https://t.me/rfrit","enabled":true},
+  {"id":"tg-grants-for-business","name":"Гранты для ИТ","type":"telegram","url":"https://t.me/grantsforbussines","enabled":true},
+  {"id":"tg-cio-channel","name":"CIO: канал IT-руководителей","type":"telegram","url":"https://t.me/cio_channel","enabled":true},
+  {"id":"tg-rustorgpred","name":"Торгпред — тендеры и закупки","type":"telegram","url":"https://t.me/rustorgpred","enabled":true},
+  {"id":"tg-government-rus","name":"Правительство РФ — сводки","type":"telegram","url":"https://t.me/government_rus","enabled":true},
+  {"id":"tg-arperf","name":"АРПЭ — новости","type":"telegram","url":"https://t.me/arperf","enabled":true},
+  {"id":"tg-icipr","name":"ЦИПР — новости и анонсы мероприятий","type":"telegram","url":"https://t.me/icipr","enabled":true},
+  {"id":"tg-arppsoft","name":"АРПП — новости","type":"telegram","url":"https://t.me/arppsoft","enabled":true},
+  {"id":"rss-vedomosti-tech","name":"Ведомости — технологии","type":"rss","url":"https://www.vedomosti.ru/rss/rubric/technology","enabled":true},
+  {"id":"rss-kommersant-main","name":"Коммерсант — главное","type":"rss","url":"https://www.kommersant.ru/rss/main.xml","enabled":true},
+  {"id":"rss-cableman","name":"Кабельщик","type":"rss","url":"https://www.cableman.ru/rss.xml","enabled":true},
+  {"id":"rss-telesputnik","name":"Телеспутник","type":"rss","url":"https://telesputnik.ru/rss/","enabled":true}
+]

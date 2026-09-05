@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: PR/GR AI Analytics API
-  version: 0.2.0
+  version: 0.4.0
   description: >-
     API модульного MVP: публикации, AI-анализ, решения специалистов, источники,
     синхронный сбор и жизненный цикл НПА.
@@ -15,7 +15,9 @@ tags:
   - name: decisions
   - name: regulatory-cases
   - name: collections
+  - name: deduplication
   - name: demo
+  - name: auth
 
 paths:
   /api/health:
@@ -29,6 +31,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Health"
+
+  /api/auth/telegram:
+    post:
+      tags: [auth]
+      operationId: authenticateTelegram
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TelegramAuthRequest"}
+      responses:
+        "200":
+          description: Telegram Mini App launch data validated by the backend
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TelegramAuthResponse"}
+        "401":
+          description: Invalid or expired Telegram launch data
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "503":
+          description: Telegram authentication is not configured
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
 
   /api/publications:
     get:
@@ -57,6 +85,12 @@ paths:
         - name: needs_review
           in: query
           schema: {type: boolean}
+        - name: visibility
+          in: query
+          schema:
+            type: string
+            enum: [active, hidden, all]
+            default: active
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
       responses:
@@ -66,6 +100,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PublicationList"
+    post:
+      tags: [publications]
+      operationId: createPublication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PublicationCreate"}
+      responses:
+        "201":
+          description: Manually added publication
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PublicationDetail"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409":
+          description: Publication with the same URL or content already exists
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "422": {$ref: "#/components/responses/ValidationError"}
 
   /api/publications/{publication_id}:
     get:
@@ -81,6 +136,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/PublicationDetail"
         "404": {$ref: "#/components/responses/NotFound"}
+    patch:
+      tags: [publications]
+      operationId: updatePublication
+      parameters:
+        - $ref: "#/components/parameters/PublicationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PublicationPatch"}
+      responses:
+        "200":
+          description: Publication with a new append-only metadata revision
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PublicationDetail"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "422": {$ref: "#/components/responses/ValidationError"}
 
   /api/publications/{publication_id}/analyses:
     post:
@@ -239,6 +312,52 @@ paths:
                 completed:
                   externalValue: ./examples/collection-report.json
 
+  /api/duplicate-candidates:
+    get:
+      tags: [deduplication]
+      operationId: listDuplicateCandidates
+      parameters:
+        - name: status
+          in: query
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/DuplicateFilterStatus"
+            default: unreviewed
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Semantic candidate queue for human review
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DuplicateCandidateList"}
+
+  /api/duplicate-candidates/{candidate_id}/reviews:
+    post:
+      tags: [deduplication]
+      operationId: createDuplicateReview
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DuplicateReviewCreate"}
+            examples:
+              related:
+                externalValue: ./examples/duplicate-review.json
+      responses:
+        "201":
+          description: Append-only human verdict and updated candidate projection
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DuplicateCandidate"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+
   /api/regulatory-cases:
     get:
       tags: [regulatory-cases]
@@ -395,6 +514,10 @@ components:
       type: string
       enum: [critical, high, medium, low, unknown]
 
+    PublicationVisibility:
+      type: string
+      enum: [active, hidden, all]
+
     LifecycleStage:
       type: string
       enum: [draft, introduced, adopted, published, effective, amended, repealed]
@@ -463,18 +586,60 @@ components:
     Criteria:
       type: object
       additionalProperties: false
-      required: [K1, K2, K3, K4, K5, K6, H1, H2, H3, H4]
+      required:
+        - business_relevance
+        - event_maturity
+        - financial_impact
+        - implementation_effort
+        - risk_severity
+        - action_urgency
+        - state_support_or_accreditation_change
+        - service_or_legal_blocking_risk
+        - strategic_technology_status
+        - binding_legal_precedent
       properties:
-        K1: {type: integer, minimum: 0, maximum: 3}
-        K2: {type: integer, minimum: 0, maximum: 3}
-        K3: {type: integer, minimum: 0, maximum: 3}
-        K4: {type: integer, minimum: 0, maximum: 3}
-        K5: {type: integer, minimum: 0, maximum: 3}
-        K6: {type: integer, minimum: 0, maximum: 3}
-        H1: {type: boolean}
-        H2: {type: boolean}
-        H3: {type: boolean}
-        H4: {type: boolean}
+        business_relevance:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 3
+          description: Насколько событие прямо применимо к бизнесу
+        event_maturity:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 3
+          description: Насколько событие подтверждено и близко к вступлению в силу
+        financial_impact:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 3
+          description: Возможный финансовый эффект
+        implementation_effort:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 3
+          description: Сложность необходимых изменений в процессах или продукте
+        risk_severity:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 3
+          description: Тяжесть юридического или репутационного риска
+        action_urgency:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 3
+          description: Как быстро специалисту нужно отреагировать
+        state_support_or_accreditation_change:
+          type: boolean
+          description: Меняются господдержка, льготы или ИТ-аккредитация
+        service_or_legal_blocking_risk:
+          type: boolean
+          description: Есть прямой риск запрета, блокировки сервиса или уголовной ответственности
+        strategic_technology_status:
+          type: boolean
+          description: Технология или инфраструктура получает стратегический статус
+        binding_legal_precedent:
+          type: boolean
+          description: Есть прямо применимый обязательный правовой или судебный прецедент
 
     Publication:
       type: object
@@ -491,6 +656,11 @@ components:
         - content_hash
         - is_demo
         - latest_analysis_id
+        - latest_revision_id
+        - tags
+        - is_hidden
+        - is_manual
+        - updated_at
       properties:
         id: {type: string}
         source_id: {type: string}
@@ -503,6 +673,72 @@ components:
         content_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
         is_demo: {type: boolean}
         latest_analysis_id: {type: [string, "null"]}
+        latest_revision_id: {type: [string, "null"]}
+        tags:
+          type: array
+          items: {type: string, minLength: 1}
+        is_hidden: {type: boolean}
+        is_manual: {type: boolean}
+        updated_at: {type: string, format: date-time}
+
+    PublicationCreate:
+      type: object
+      additionalProperties: false
+      required:
+        - source_id
+        - title
+        - original_url
+        - published_at
+        - content
+        - author_id
+      properties:
+        source_id: {type: string, minLength: 1}
+        title: {type: string, minLength: 1}
+        original_url: {type: string, format: uri}
+        published_at: {type: string, format: date-time}
+        content: {type: string, minLength: 1}
+        tags:
+          type: array
+          uniqueItems: true
+          items: {type: string, minLength: 1}
+        author_id: {type: string, minLength: 1}
+
+    PublicationPatch:
+      type: object
+      additionalProperties: false
+      required: [author_id]
+      properties:
+        title: {type: string, minLength: 1}
+        tags:
+          type: array
+          uniqueItems: true
+          items: {type: string, minLength: 1}
+        is_hidden: {type: boolean}
+        author_id: {type: string, minLength: 1}
+
+    PublicationRevision:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - publication_id
+        - version
+        - title
+        - tags
+        - is_hidden
+        - author_id
+        - created_at
+      properties:
+        id: {type: string}
+        publication_id: {type: string}
+        version: {type: integer, minimum: 1}
+        title: {type: string, minLength: 1}
+        tags:
+          type: array
+          items: {type: string, minLength: 1}
+        is_hidden: {type: boolean}
+        author_id: {type: string}
+        created_at: {type: string, format: date-time}
 
     AnalysisVersion:
       type: object
@@ -521,7 +757,7 @@ components:
         - category
         - proposed_priority
         - criteria
-        - score
+        - importance_score
         - evidence
         - uncertainty
         - needs_review
@@ -540,7 +776,11 @@ components:
         category: {$ref: "#/components/schemas/Category"}
         proposed_priority: {$ref: "#/components/schemas/Priority"}
         criteria: {$ref: "#/components/schemas/Criteria"}
-        score: {type: integer, minimum: 0, maximum: 18}
+        importance_score:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 18
+          description: Детерминированная сумма шести критериев или null при неизвестном значении
         evidence: {type: array, items: {$ref: "#/components/schemas/Evidence"}}
         uncertainty: {type: number, minimum: 0, maximum: 1}
         needs_review: {type: boolean}
@@ -569,6 +809,76 @@ components:
         items:
           type: array
           items: {$ref: "#/components/schemas/PublicationDetail"}
+        total: {type: integer, minimum: 0}
+        limit: {type: integer, minimum: 1}
+        offset: {type: integer, minimum: 0}
+
+    DuplicateStatus:
+      type: string
+      enum: [unreviewed, duplicate, related, different]
+
+    DuplicateFilterStatus:
+      type: string
+      enum: [all, unreviewed, duplicate, related, different]
+
+    DuplicateVerdict:
+      type: string
+      enum: [duplicate, related, different]
+
+    DuplicateReviewCreate:
+      type: object
+      additionalProperties: false
+      required: [verdict, reviewer_id]
+      properties:
+        verdict: {$ref: "#/components/schemas/DuplicateVerdict"}
+        reviewer_id: {type: string, minLength: 1}
+        comment: {type: [string, "null"], maxLength: 2000}
+
+    DuplicateReview:
+      type: object
+      additionalProperties: false
+      required: [id, candidate_id, version, verdict, reviewer_id, comment, created_at]
+      properties:
+        id: {type: string}
+        candidate_id: {type: string}
+        version: {type: integer, minimum: 1}
+        verdict: {$ref: "#/components/schemas/DuplicateVerdict"}
+        reviewer_id: {type: string}
+        comment: {type: [string, "null"]}
+        created_at: {type: string, format: date-time}
+
+    DuplicateCandidate:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - publication
+        - candidate_publication
+        - model
+        - similarity
+        - status
+        - reviews
+        - created_at
+      properties:
+        id: {type: string}
+        publication: {$ref: "#/components/schemas/PublicationDetail"}
+        candidate_publication: {$ref: "#/components/schemas/PublicationDetail"}
+        model: {type: string}
+        similarity: {type: number, minimum: -1, maximum: 1}
+        status: {$ref: "#/components/schemas/DuplicateStatus"}
+        reviews:
+          type: array
+          items: {$ref: "#/components/schemas/DuplicateReview"}
+        created_at: {type: string, format: date-time}
+
+    DuplicateCandidateList:
+      type: object
+      additionalProperties: false
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/DuplicateCandidate"}
         total: {type: integer, minimum: 0}
         limit: {type: integer, minimum: 1}
         offset: {type: integer, minimum: 0}
@@ -630,15 +940,47 @@ components:
     PublicationHistory:
       type: object
       additionalProperties: false
-      required: [publication_id, analyses, decisions]
+      required: [publication_id, revisions, analyses, decisions]
       properties:
         publication_id: {type: string}
+        revisions:
+          type: array
+          items: {$ref: "#/components/schemas/PublicationRevision"}
         analyses:
           type: array
           items: {$ref: "#/components/schemas/AnalysisVersion"}
         decisions:
           type: array
           items: {$ref: "#/components/schemas/SpecialistDecision"}
+
+    TelegramAuthRequest:
+      type: object
+      additionalProperties: false
+      required: [init_data]
+      properties:
+        init_data: {type: string, minLength: 1, maxLength: 8192}
+
+    TelegramUser:
+      type: object
+      additionalProperties: false
+      required: [id, first_name]
+      properties:
+        id: {type: integer, format: int64}
+        first_name: {type: string}
+        last_name: {type: [string, "null"]}
+        username: {type: [string, "null"]}
+        language_code: {type: [string, "null"]}
+        photo_url: {type: [string, "null"], format: uri}
+
+    TelegramAuthResponse:
+      type: object
+      additionalProperties: false
+      required: [authenticated, user, auth_date, query_id]
+      properties:
+        authenticated: {type: boolean, const: true}
+        user: {$ref: "#/components/schemas/TelegramUser"}
+        auth_date: {type: string, format: date-time}
+        query_id: {type: [string, "null"]}
 
     RegulatoryCaseCreate:
       type: object
@@ -751,6 +1093,8 @@ components:
         - status
         - collected
         - created
+        - already_seen
+        - content_duplicates
         - exact_duplicates
         - semantic_candidates
         - error
@@ -759,7 +1103,19 @@ components:
         status: {type: string, enum: [success, partial, failed]}
         collected: {type: integer, minimum: 0}
         created: {type: integer, minimum: 0}
-        exact_duplicates: {type: integer, minimum: 0}
+        already_seen:
+          type: integer
+          minimum: 0
+          description: Items skipped because source/external ID or canonical URL was already stored
+        content_duplicates:
+          type: integer
+          minimum: 0
+          description: Items skipped only because normalized content SHA-256 already existed
+        exact_duplicates:
+          type: integer
+          minimum: 0
+          deprecated: true
+          description: Compatibility total equal to already_seen plus content_duplicates
         semantic_candidates: {type: integer, minimum: 0}
         error: {type: [string, "null"]}
 
@@ -773,6 +1129,8 @@ components:
         - sources
         - collected
         - created
+        - already_seen
+        - content_duplicates
         - exact_duplicates
         - semantic_candidates
       properties:
@@ -786,5 +1144,11 @@ components:
           items: {$ref: "#/components/schemas/SourceCollectionResult"}
         collected: {type: integer, minimum: 0}
         created: {type: integer, minimum: 0}
-        exact_duplicates: {type: integer, minimum: 0}
+        already_seen: {type: integer, minimum: 0}
+        content_duplicates: {type: integer, minimum: 0}
+        exact_duplicates:
+          type: integer
+          minimum: 0
+          deprecated: true
+          description: Compatibility total equal to already_seen plus content_duplicates
         semantic_candidates: {type: integer, minimum: 0}

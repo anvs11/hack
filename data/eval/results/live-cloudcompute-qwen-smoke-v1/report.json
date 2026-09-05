@@ -1,0 +1,29 @@
+{
+  "measurement": {
+    "kind": "live_llm_plumbing_smoke",
+    "quality_claim_allowed": false,
+    "reason": "One publication was processed without independent human labels.",
+    "created_at": "2026-09-05T09:10:52.033264Z",
+    "provider": "CloudCompute OpenAI-compatible inference",
+    "model": "qwen/qwen3.8-flash",
+    "reasoning_effort": "none",
+    "publication_id": "publication-ca349ada4e1e4f92a3d9e113a93185bf",
+    "analysis_id": "analysis-d42bb1a9bd80452e9e1d7bdbc6e7f412"
+  },
+  "result": {
+    "http_status": 201,
+    "elapsed_seconds": 13.163086,
+    "analysis_version_created": true,
+    "summary_sentences": 4,
+    "evidence_quotes": 3,
+    "grounded_evidence_quotes": 3,
+    "importance_score": 13,
+    "proposed_priority": "high",
+    "needs_review": true
+  },
+  "guardrail_observation": {
+    "first_full_attempt_status": 422,
+    "first_full_attempt_reason": "ungrounded evidence quote",
+    "change": "Evidence grounding was moved into the analyzer retry loop; the strict service-level check remains."
+  }
+}

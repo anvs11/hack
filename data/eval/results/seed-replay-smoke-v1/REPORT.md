@@ -16,6 +16,7 @@
 - category macro-F1: 1.0;
 - `critical → low`: 0 при 0 critical labels;
 - grounded evidence quotes: 10/10.
+- mean summary/input character ratio: 1.579867 (10 measured summaries).
 
 **Ограничение:** совпадение evidence quote с исходным текстом не доказывает
 фактологичность всех утверждений summary. Для quality benchmark нужны независимо

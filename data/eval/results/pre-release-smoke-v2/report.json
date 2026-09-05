@@ -1,0 +1,48 @@
+{
+  "kind": "pre_release_local_smoke",
+  "quality_claim_allowed": false,
+  "checked_at": "2026-09-05T09:03:28Z",
+  "api_version": "0.4.0",
+  "database": ".local/live.sqlite3",
+  "database_versioned": false,
+  "database_counts": {
+    "sources": 18,
+    "publications": 385,
+    "analysis_versions": 12,
+    "specialist_decisions": 2,
+    "regulatory_cases": 1,
+    "regulatory_case_publications": 1,
+    "lifecycle_events": 1,
+    "publication_embeddings": 382,
+    "duplicate_candidates": 381
+  },
+  "periodic_collection": {
+    "interval_seconds": 1800,
+    "enabled_sources": 13,
+    "successful_sources": 13,
+    "collected": 311,
+    "created": 3,
+    "already_seen": 307,
+    "content_duplicates": 1,
+    "semantic_candidates": 0
+  },
+  "automated_checks": {
+    "backend_tests_passed": 173,
+    "frontend_tests_passed": 127,
+    "frontend_typecheck": "passed",
+    "frontend_lint_errors": 0,
+    "frontend_lint_warnings": 10,
+    "frontend_build": "passed"
+  },
+  "visual_checks": [
+    "publication_shows_importance_score_out_of_18",
+    "publication_shows_six_named_criteria_and_four_named_hard_signals",
+    "specialist_final_priority_remains_separate_from_ai_proposal",
+    "telegram_runtime_waits_for_delayed_official_sdk",
+    "analyzer_unavailable_message_does_not_expose_environment_variable_names"
+  ],
+  "external_blockers": [
+    "public_https_server_not_created",
+    "telegram_web_app_url_not_configured_in_botfather"
+  ]
+}

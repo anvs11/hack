@@ -9,12 +9,17 @@ data/*
 !data/seed/**
 !data/eval/
 !data/eval/**
+!data/live/
+!data/live/**
 *.csv
 *.parquet
 *.pkl
 *.sqlite
 *.sqlite3
 .local/
+.env
+deploy/.env
+deploy/secrets/
 
 # Python
 __pycache__/

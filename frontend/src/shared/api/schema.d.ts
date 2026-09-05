@@ -20,6 +20,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/telegram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["authenticateTelegram"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/publications": {
         parameters: {
             query?: never;
@@ -29,7 +45,7 @@ export interface paths {
         };
         get: operations["listPublications"];
         put?: never;
-        post?: never;
+        post: operations["createPublication"];
         delete?: never;
         options?: never;
         head?: never;
@@ -49,7 +65,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["updatePublication"];
         trace?: never;
     };
     "/api/publications/{publication_id}/analyses": {
@@ -180,6 +196,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/duplicate-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listDuplicateCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/duplicate-candidates/{candidate_id}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createDuplicateReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/regulatory-cases": {
         parameters: {
             query?: never;
@@ -266,6 +314,8 @@ export interface components {
         /** @enum {string} */
         Priority: "critical" | "high" | "medium" | "low" | "unknown";
         /** @enum {string} */
+        PublicationVisibility: "active" | "hidden" | "all";
+        /** @enum {string} */
         LifecycleStage: "draft" | "introduced" | "adopted" | "published" | "effective" | "amended" | "repealed";
         SourceCreate: {
             name: string;
@@ -304,16 +354,26 @@ export interface components {
             quote: string;
         };
         Criteria: {
-            K1: number;
-            K2: number;
-            K3: number;
-            K4: number;
-            K5: number;
-            K6: number;
-            H1: boolean;
-            H2: boolean;
-            H3: boolean;
-            H4: boolean;
+            /** @description Насколько событие прямо применимо к бизнесу */
+            business_relevance: number | null;
+            /** @description Насколько событие подтверждено и близко к вступлению в силу */
+            event_maturity: number | null;
+            /** @description Возможный финансовый эффект */
+            financial_impact: number | null;
+            /** @description Сложность необходимых изменений в процессах или продукте */
+            implementation_effort: number | null;
+            /** @description Тяжесть юридического или репутационного риска */
+            risk_severity: number | null;
+            /** @description Как быстро специалисту нужно отреагировать */
+            action_urgency: number | null;
+            /** @description Меняются господдержка, льготы или ИТ-аккредитация */
+            state_support_or_accreditation_change: boolean;
+            /** @description Есть прямой риск запрета, блокировки сервиса или уголовной ответственности */
+            service_or_legal_blocking_risk: boolean;
+            /** @description Технология или инфраструктура получает стратегический статус */
+            strategic_technology_status: boolean;
+            /** @description Есть прямо применимый обязательный правовой или судебный прецедент */
+            binding_legal_precedent: boolean;
         };
         Publication: {
             id: string;
@@ -330,6 +390,40 @@ export interface components {
             content_hash: string;
             is_demo: boolean;
             latest_analysis_id: string | null;
+            latest_revision_id: string | null;
+            tags: string[];
+            is_hidden: boolean;
+            is_manual: boolean;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        PublicationCreate: {
+            source_id: string;
+            title: string;
+            /** Format: uri */
+            original_url: string;
+            /** Format: date-time */
+            published_at: string;
+            content: string;
+            tags?: string[];
+            author_id: string;
+        };
+        PublicationPatch: {
+            title?: string;
+            tags?: string[];
+            is_hidden?: boolean;
+            author_id: string;
+        };
+        PublicationRevision: {
+            id: string;
+            publication_id: string;
+            version: number;
+            title: string;
+            tags: string[];
+            is_hidden: boolean;
+            author_id: string;
+            /** Format: date-time */
+            created_at: string;
         };
         AnalysisVersion: {
             id: string;
@@ -346,7 +440,8 @@ export interface components {
             category: components["schemas"]["Category"];
             proposed_priority: components["schemas"]["Priority"];
             criteria: components["schemas"]["Criteria"];
-            score: number;
+            /** @description Детерминированная сумма шести критериев или null при неизвестном значении */
+            importance_score: number | null;
             evidence: components["schemas"]["Evidence"][];
             uncertainty: number;
             needs_review: boolean;
@@ -360,6 +455,44 @@ export interface components {
         };
         PublicationList: {
             items: components["schemas"]["PublicationDetail"][];
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        /** @enum {string} */
+        DuplicateStatus: "unreviewed" | "duplicate" | "related" | "different";
+        /** @enum {string} */
+        DuplicateFilterStatus: "all" | "unreviewed" | "duplicate" | "related" | "different";
+        /** @enum {string} */
+        DuplicateVerdict: "duplicate" | "related" | "different";
+        DuplicateReviewCreate: {
+            verdict: components["schemas"]["DuplicateVerdict"];
+            reviewer_id: string;
+            comment?: string | null;
+        };
+        DuplicateReview: {
+            id: string;
+            candidate_id: string;
+            version: number;
+            verdict: components["schemas"]["DuplicateVerdict"];
+            reviewer_id: string;
+            comment: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        DuplicateCandidate: {
+            id: string;
+            publication: components["schemas"]["PublicationDetail"];
+            candidate_publication: components["schemas"]["PublicationDetail"];
+            model: string;
+            similarity: number;
+            status: components["schemas"]["DuplicateStatus"];
+            reviews: components["schemas"]["DuplicateReview"][];
+            /** Format: date-time */
+            created_at: string;
+        };
+        DuplicateCandidateList: {
+            items: components["schemas"]["DuplicateCandidate"][];
             total: number;
             limit: number;
             offset: number;
@@ -398,8 +531,30 @@ export interface components {
         };
         PublicationHistory: {
             publication_id: string;
+            revisions: components["schemas"]["PublicationRevision"][];
             analyses: components["schemas"]["AnalysisVersion"][];
             decisions: components["schemas"]["SpecialistDecision"][];
+        };
+        TelegramAuthRequest: {
+            init_data: string;
+        };
+        TelegramUser: {
+            /** Format: int64 */
+            id: number;
+            first_name: string;
+            last_name?: string | null;
+            username?: string | null;
+            language_code?: string | null;
+            /** Format: uri */
+            photo_url?: string | null;
+        };
+        TelegramAuthResponse: {
+            /** @constant */
+            authenticated: true;
+            user: components["schemas"]["TelegramUser"];
+            /** Format: date-time */
+            auth_date: string;
+            query_id: string | null;
         };
         RegulatoryCaseCreate: {
             title: string;
@@ -463,6 +618,14 @@ export interface components {
             status: "success" | "partial" | "failed";
             collected: number;
             created: number;
+            /** @description Items skipped because source/external ID or canonical URL was already stored */
+            already_seen: number;
+            /** @description Items skipped only because normalized content SHA-256 already existed */
+            content_duplicates: number;
+            /**
+             * @deprecated
+             * @description Compatibility total equal to already_seen plus content_duplicates
+             */
             exact_duplicates: number;
             semantic_candidates: number;
             error: string | null;
@@ -477,6 +640,12 @@ export interface components {
             sources: components["schemas"]["SourceCollectionResult"][];
             collected: number;
             created: number;
+            already_seen: number;
+            content_duplicates: number;
+            /**
+             * @deprecated
+             * @description Compatibility total equal to already_seen plus content_duplicates
+             */
             exact_duplicates: number;
             semantic_candidates: number;
         };
@@ -536,6 +705,48 @@ export interface operations {
             };
         };
     };
+    authenticateTelegram: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelegramAuthRequest"];
+            };
+        };
+        responses: {
+            /** @description Telegram Mini App launch data validated by the backend */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramAuthResponse"];
+                };
+            };
+            /** @description Invalid or expired Telegram launch data */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Telegram authentication is not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listPublications: {
         parameters: {
             query?: {
@@ -548,6 +759,7 @@ export interface operations {
                 category?: components["schemas"]["Category"];
                 proposed_priority?: components["schemas"]["Priority"];
                 needs_review?: boolean;
+                visibility?: "active" | "hidden" | "all";
                 limit?: components["parameters"]["Limit"];
                 offset?: components["parameters"]["Offset"];
             };
@@ -566,6 +778,41 @@ export interface operations {
                     "application/json": components["schemas"]["PublicationList"];
                 };
             };
+        };
+    };
+    createPublication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicationCreate"];
+            };
+        };
+        responses: {
+            /** @description Manually added publication */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicationDetail"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Publication with the same URL or content already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
         };
     };
     getPublication: {
@@ -589,6 +836,34 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    updatePublication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                publication_id: components["parameters"]["PublicationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicationPatch"];
+            };
+        };
+        responses: {
+            /** @description Publication with a new append-only metadata revision */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicationDetail"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationError"];
         };
     };
     createPublicationAnalysis: {
@@ -803,6 +1078,58 @@ export interface operations {
                     "application/json": components["schemas"]["CollectionReport"];
                 };
             };
+        };
+    };
+    listDuplicateCandidates: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["DuplicateFilterStatus"];
+                limit?: components["parameters"]["Limit"];
+                offset?: components["parameters"]["Offset"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Semantic candidate queue for human review */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuplicateCandidateList"];
+                };
+            };
+        };
+    };
+    createDuplicateReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DuplicateReviewCreate"];
+            };
+        };
+        responses: {
+            /** @description Append-only human verdict and updated candidate projection */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuplicateCandidate"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationError"];
         };
     };
     listRegulatoryCases: {

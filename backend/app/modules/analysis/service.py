@@ -63,9 +63,13 @@ def create_analysis_version(
         scoring = score_criteria(draft.criteria)
         draft = draft.model_copy(
             update={
-                "score": scoring.score,
+                "importance_score": scoring.importance_score,
                 "proposed_priority": scoring.proposed_priority,
-                "needs_review": draft.needs_review or scoring.has_hard_flag,
+                "needs_review": (
+                    draft.needs_review
+                    or scoring.has_hard_signal
+                    or scoring.has_unknown_criterion
+                ),
             }
         )
 

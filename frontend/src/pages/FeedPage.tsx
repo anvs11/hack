@@ -1,10 +1,20 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  type FormEvent,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../shared/api/client'
 import type {
   Category,
   Priority,
+  PublicationCreate,
   PublicationQuery,
+  Source,
   SourceType,
 } from '../shared/api/types'
 import { useApiResource } from '../shared/api/useApiResource'
@@ -12,6 +22,7 @@ import { formatCategory, formatDate, formatPriority } from '../shared/format'
 import { PageState } from '../shared/PageState'
 import { sortPublications } from '../shared/publications'
 import { RevealText } from '../shared/RevealText'
+import { getCurrentActorId } from '../shared/telegram/adapter'
 
 const HeroVisual = lazy(() => import('../shared/HeroVisual'))
 const SEARCH_DEBOUNCE_MS = 300
@@ -45,6 +56,8 @@ const queryFilterKeys = [
   'category',
   'proposed_priority',
   'needs_review',
+  'published_from',
+  'published_to',
 ] as const
 
 function allowedValue<T extends string>(
@@ -67,6 +80,8 @@ function queryFromUrl(searchParams: URLSearchParams): PublicationQuery {
     priorities,
   )
   const reviewValue = searchParams.get('needs_review')
+  const publishedFrom = searchParams.get('published_from')?.trim() || undefined
+  const publishedTo = searchParams.get('published_to')?.trim() || undefined
 
   return {
     q,
@@ -79,6 +94,8 @@ function queryFromUrl(searchParams: URLSearchParams): PublicationQuery {
       : reviewValue === 'false'
         ? false
         : undefined,
+    published_from: publishedFrom,
+    published_to: publishedTo,
   }
 }
 
@@ -86,15 +103,17 @@ export function FeedPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const urlSearchValue = searchParams.get('q') ?? ''
   const [searchValue, setSearchValue] = useState(urlSearchValue)
+  const [refreshVersion, setRefreshVersion] = useState(0)
+  const [actionStatus, setActionStatus] = useState('')
   const query = useMemo(() => queryFromUrl(searchParams), [searchParams])
   const loadPublications = useCallback(
     (signal: AbortSignal) => api.listPublications(query, signal),
-    [query],
+    [query, refreshVersion],
   )
   const loadSources = useCallback((signal: AbortSignal) => api.listSources(signal), [])
   const loadAllCount = useCallback(
     (signal: AbortSignal) => api.listPublications({ limit: 1 }, signal),
-    [],
+    [refreshVersion],
   )
   const publicationsState = useApiResource(loadPublications)
   const sourcesState = useApiResource(loadSources)
@@ -179,7 +198,18 @@ export function FeedPage() {
             <strong>{publicationsState.status === 'success' ? String(total).padStart(2, '0') : '—'}</strong>
             <span>материалов</span>
           </div>
+          {sourcesState.status === 'success' && (
+            <ManualPublicationDialog
+              sources={sourcesState.data}
+              onCreated={(title) => {
+                setActionStatus(`Публикация «${title}» добавлена.`)
+                setRefreshVersion((value) => value + 1)
+              }}
+            />
+          )}
         </header>
+
+        {actionStatus && <p className="action-message" role="status">{actionStatus}</p>}
 
         <section className="feed-controls" aria-label="Поиск и фильтры публикаций">
           <label className="search-field">
@@ -240,6 +270,28 @@ export function FeedPage() {
                 <option value="true">Требует проверки</option>
                 <option value="false">Проверено AI</option>
               </select>
+            </label>
+            <label className="filter-field">
+              <span>Дата с</span>
+              <input
+                type="date"
+                value={query.published_from?.slice(0, 10) ?? ''}
+                onChange={(event) => updateFilter(
+                  'published_from',
+                  event.target.value ? `${event.target.value}T00:00:00.000Z` : '',
+                )}
+              />
+            </label>
+            <label className="filter-field">
+              <span>Дата по</span>
+              <input
+                type="date"
+                value={query.published_to?.slice(0, 10) ?? ''}
+                onChange={(event) => updateFilter(
+                  'published_to',
+                  event.target.value ? `${event.target.value}T23:59:59.999Z` : '',
+                )}
+              />
             </label>
             <button className="reset-button" type="button" onClick={reset} disabled={!hasCriteria}>
               Сбросить
@@ -322,5 +374,108 @@ export function FeedPage() {
         </div>
       </section>
     </section>
+  )
+}
+
+function ManualPublicationDialog({
+  sources,
+  onCreated,
+}: {
+  sources: Source[]
+  onCreated: (title: string) => void
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [sourceId, setSourceId] = useState(sources[0]?.id ?? '')
+  const [title, setTitle] = useState('')
+  const [url, setUrl] = useState('')
+  const [publishedAt, setPublishedAt] = useState(
+    new Date().toISOString().slice(0, 16),
+  )
+  const [content, setContent] = useState('')
+  const [tags, setTags] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (isSubmitting) return
+    setIsSubmitting(true)
+    setError('')
+    const payload: PublicationCreate = {
+      source_id: sourceId,
+      title: title.trim(),
+      original_url: url.trim(),
+      published_at: new Date(publishedAt).toISOString(),
+      content: content.trim(),
+      tags: [...new Set(tags.split(',').map((tag) => tag.trim()).filter(Boolean))],
+      author_id: getCurrentActorId(),
+    }
+    try {
+      const detail = await api.createPublication(payload)
+      setIsOpen(false)
+      onCreated(detail.publication.title)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Не удалось добавить публикацию')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <>
+      <button className="primary-action" type="button" onClick={() => setIsOpen(true)}>
+        Добавить публикацию
+      </button>
+      {isOpen && (
+        <div className="dialog-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setIsOpen(false)
+        }}>
+          <section className="case-dialog" role="dialog" aria-modal="true" aria-labelledby="manual-publication-title">
+            <div className="dialog-heading">
+              <div>
+                <p className="eyebrow">Ручной ввод</p>
+                <h2 id="manual-publication-title">Новая публикация</h2>
+              </div>
+              <button type="button" className="dialog-close" onClick={() => setIsOpen(false)} aria-label="Закрыть диалог">×</button>
+            </div>
+            <form className="decision-form" onSubmit={submit}>
+              <label className="form-field">
+                <span>Источник</span>
+                <select value={sourceId} required onChange={(event) => setSourceId(event.target.value)}>
+                  {sources.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
+                </select>
+              </label>
+              <label className="form-field">
+                <span>Дата публикации</span>
+                <input type="datetime-local" value={publishedAt} required onChange={(event) => setPublishedAt(event.target.value)} />
+              </label>
+              <label className="form-field form-field-wide">
+                <span>Заголовок</span>
+                <input value={title} required onChange={(event) => setTitle(event.target.value)} />
+              </label>
+              <label className="form-field form-field-wide">
+                <span>Ссылка на оригинал</span>
+                <input type="url" value={url} required onChange={(event) => setUrl(event.target.value)} />
+              </label>
+              <label className="form-field form-field-wide">
+                <span>Текст</span>
+                <textarea value={content} required rows={7} onChange={(event) => setContent(event.target.value)} />
+              </label>
+              <label className="form-field form-field-wide">
+                <span>Теги через запятую</span>
+                <input value={tags} onChange={(event) => setTags(event.target.value)} />
+              </label>
+              {error && <p className="form-error form-field-wide" role="alert">{error}</p>}
+              <div className="dialog-actions form-field-wide">
+                <button className="secondary-action" type="button" onClick={() => setIsOpen(false)}>Отмена</button>
+                <button className="primary-action" type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? 'Добавляем…' : 'Добавить'}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+    </>
   )
 }

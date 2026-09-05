@@ -1,0 +1,20 @@
+{
+  "kind": "live_semantic_dedup_backfill_smoke",
+  "quality_claim_allowed": false,
+  "model": "Qwen/Qwen3-Embedding-0.6B",
+  "corpus_subset": 20,
+  "input_char_limit": 600,
+  "first_run": {
+    "candidates_created": 19,
+    "candidates_already_present": 0,
+    "duration_seconds": 27.405
+  },
+  "second_run": {
+    "candidates_created": 0,
+    "candidates_already_present": 19,
+    "duration_seconds": 0.009
+  },
+  "top_similarity": 0.8898,
+  "production_threshold": null,
+  "reproduction_command": "HACK_EMBEDDING_MAX_INPUT_CHARS=600 .venv/bin/python scripts/backfill_duplicate_candidates.py --limit 20"
+}

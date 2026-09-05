@@ -3,7 +3,7 @@ import { TelegramIntegration } from '../shared/telegram/TelegramIntegration'
 
 const navigation = [
   { to: '/feed', label: 'Лента' },
-  { to: '/publications/pub-001', label: 'Публикация' },
+  { to: '/duplicates', label: 'Дубли' },
   { to: '/regulatory-cases/case-001', label: 'Кейс НПА' },
   { to: '/sources', label: 'Источники' },
   { to: '/digest', label: 'Дайджест' },
@@ -14,7 +14,6 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <TelegramIntegration />
       <header className="app-header">
         <NavLink className="brand" to="/feed" aria-label="Insight — на главную">
           <span className="brand-mark" aria-hidden="true">I<span>·</span></span>
@@ -26,6 +25,7 @@ export function App() {
         </p>
 
         <div className="header-actions">
+          <TelegramIntegration />
           <div className="workspace-pill">
             <span className="status-dot" aria-hidden="true" />
             Demo space

@@ -1,0 +1,72 @@
+{
+  "measurement": {
+    "kind": "plumbing_smoke",
+    "dataset_id": "dedup-smoke-pairs-v1",
+    "independent_labels": false,
+    "quality_claim_allowed": false,
+    "model": "Qwen/Qwen3-Embedding-0.6B",
+    "pair_count": 6,
+    "embedding_seconds": 8.577
+  },
+  "similarity_by_label": {
+    "different": {
+      "count": 2,
+      "min": 0.16685,
+      "mean": 0.240531,
+      "max": 0.314211
+    },
+    "duplicate": {
+      "count": 2,
+      "min": 0.789222,
+      "mean": 0.864417,
+      "max": 0.939612
+    },
+    "related": {
+      "count": 2,
+      "min": 0.553097,
+      "mean": 0.60688,
+      "max": 0.660663
+    }
+  },
+  "exploratory_binary_threshold": {
+    "threshold": 0.789222,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "deployable": false
+  },
+  "production_threshold": null,
+  "production_threshold_reason": "Independent real duplicate labels are required.",
+  "rows": [
+    {
+      "id": "duplicate-01",
+      "label": "duplicate",
+      "similarity": 0.939612
+    },
+    {
+      "id": "duplicate-02",
+      "label": "duplicate",
+      "similarity": 0.789222
+    },
+    {
+      "id": "related-01",
+      "label": "related",
+      "similarity": 0.660663
+    },
+    {
+      "id": "related-02",
+      "label": "related",
+      "similarity": 0.553097
+    },
+    {
+      "id": "different-01",
+      "label": "different",
+      "similarity": 0.314211
+    },
+    {
+      "id": "different-02",
+      "label": "different",
+      "similarity": 0.16685
+    }
+  ]
+}

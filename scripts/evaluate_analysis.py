@@ -38,6 +38,9 @@ class EvaluationRow:
     evidence_quotes: int
     grounded_quotes: int
     all_evidence_grounded: bool
+    input_chars: int
+    summary_chars: int | None
+    compression_ratio: float | None
     error: str | None
 
 
@@ -113,6 +116,7 @@ def evaluate(
             "critical_to_low_count": sum(row.critical_to_low for row in rows),
         },
         "evidence": _evidence_metrics(matched_rows),
+        "summary_compression": _summary_compression_metrics(matched_rows),
         "summary_factuality": {
             "status": "not_measured",
             "reason": (
@@ -297,6 +301,8 @@ def _evaluate_row(
     )
     predicted_priority = output["proposed_priority"]
     predicted_category = output["category"]
+    summary = output.get("summary")
+    summary_chars = len(summary) if isinstance(summary, str) else None
     return EvaluationRow(
         publication_id=publication_id,
         valid_json=True,
@@ -313,6 +319,13 @@ def _evaluate_row(
         evidence_quotes=len(quotes),
         grounded_quotes=grounded,
         all_evidence_grounded=bool(quotes) and grounded == len(quotes),
+        input_chars=len(publications[publication_id]),
+        summary_chars=summary_chars,
+        compression_ratio=(
+            _rounded(summary_chars / max(len(publications[publication_id]), 1))
+            if summary_chars is not None
+            else None
+        ),
         error=None,
     )
 
@@ -337,6 +350,9 @@ def _empty_row(
         evidence_quotes=0,
         grounded_quotes=0,
         all_evidence_grounded=False,
+        input_chars=0,
+        summary_chars=None,
+        compression_ratio=None,
         error=error,
     )
 
@@ -384,6 +400,19 @@ def _evidence_metrics(rows: list[EvaluationRow]) -> dict[str, Any]:
         "all_quotes_grounded_prediction_count": all_grounded,
         "all_quotes_grounded_prediction_rate": _rate(all_grounded, len(rows)),
         "empty_evidence_prediction_count": empty_evidence,
+    }
+
+
+def _summary_compression_metrics(rows: list[EvaluationRow]) -> dict[str, Any]:
+    measured = [row for row in rows if row.compression_ratio is not None]
+    ratios = [row.compression_ratio for row in measured]
+    return {
+        "measured_prediction_count": len(measured),
+        "mean_summary_to_input_char_ratio": (
+            _rounded(sum(ratios) / len(ratios)) if ratios else None
+        ),
+        "min_summary_to_input_char_ratio": min(ratios) if ratios else None,
+        "max_summary_to_input_char_ratio": max(ratios) if ratios else None,
     }
 
 
@@ -445,6 +474,7 @@ def _markdown_report(report: dict[str, Any]) -> str:
     priority = report["priority"]
     category = report["category"]
     evidence = report["evidence"]
+    compression = report["summary_compression"]
     guardrail = report["critical_guardrail"]
     return f"""# Technical eval: {dataset['dataset_id']}
 
@@ -464,6 +494,7 @@ def _markdown_report(report: dict[str, Any]) -> str:
 - category macro-F1: {category['macro_f1']};
 - `critical → low`: {guardrail['critical_to_low_count']} при {guardrail['critical_label_count']} critical labels;
 - grounded evidence quotes: {evidence['grounded_quote_count']}/{evidence['evidence_quote_count']}.
+- mean summary/input character ratio: {compression['mean_summary_to_input_char_ratio']} ({compression['measured_prediction_count']} measured summaries).
 
 **Ограничение:** совпадение evidence quote с исходным текстом не доказывает
 фактологичность всех утверждений summary. Для quality benchmark нужны независимо

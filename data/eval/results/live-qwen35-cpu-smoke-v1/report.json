@@ -1,0 +1,38 @@
+{
+  "measurement": {
+    "kind": "plumbing_smoke",
+    "quality_claim_allowed": false,
+    "reason": "No independent human labels were used.",
+    "created_at": "2026-09-04T22:36:11.812080+00:00",
+    "model": "Qwen/Qwen3.5-0.8B",
+    "limit": 1,
+    "timeout_seconds": 30,
+    "max_input_chars": 2000,
+    "max_new_tokens": 32
+  },
+  "aggregate": {
+    "attempted": 1,
+    "successful": 0,
+    "timed_out": 1,
+    "failed": 0,
+    "mean_latency_seconds": null,
+    "mean_compression_ratio": null,
+    "summaries_with_3_to_5_sentences": 0,
+    "all_evidence_grounded": false
+  },
+  "rows": [
+    {
+      "publication_id": "publication-4d4ad39a13a54c50b38f899165cd7bb1",
+      "input_hash": "sha256:c48fe0f71979a1e02b8fb6b14f52bbfea8e6c6d9c5579c141b48c33169dec5b8",
+      "input_chars": 2221,
+      "status": "timeout",
+      "latency_seconds": 30.2,
+      "summary_chars": null,
+      "compression_ratio": null,
+      "summary_sentences": null,
+      "evidence_quotes": null,
+      "grounded_quotes": null,
+      "error": "AnalyzerUnavailable: Локальный Hugging Face analyzer недоступен"
+    }
+  ]
+}
