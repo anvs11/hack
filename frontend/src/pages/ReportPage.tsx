@@ -19,6 +19,7 @@ import { formatCategory, formatDate, formatPriority, formatSourceName } from '..
 import { sourceTypeLabel } from '../shared/feedQuery'
 import { PageState } from '../shared/PageState'
 import { getTelegramRuntimeInfo } from '../shared/telegram/adapter'
+import { downloadReportPdf } from '../shared/reportPdf'
 
 export function ReportPage() {
   const [params] = useSearchParams()
@@ -112,6 +113,15 @@ function ManualReport() {
           ? `Не удалось отправить отчёт: ${error.message}`
           : 'Не удалось отправить отчёт в Telegram.',
       )
+    }
+  }
+  async function downloadPdf() {
+    setNotice('Готовим PDF…')
+    try {
+      await downloadReportPdf(report.draft)
+      setNotice(`Скачан PDF: ${report.draft.items.length} материалов.`)
+    } catch {
+      setNotice('Не удалось создать PDF. Используйте версию для печати.')
     }
   }
   if (preview)
@@ -321,8 +331,14 @@ function ManualReport() {
           >
             Скачать JSON <span aria-hidden="true">↓</span>
           </button>
+          <button
+            disabled={!report.draft.items.length}
+            onClick={() => void downloadPdf()}
+          >
+            Скачать PDF <span aria-hidden="true">↓</span>
+          </button>
           <Link className="report-open" to="/digest?view=print">
-            Печатный вид / PDF <span aria-hidden="true">↗</span>
+            Версия для печати <span aria-hidden="true">↗</span>
           </Link>
           <button
             disabled={
