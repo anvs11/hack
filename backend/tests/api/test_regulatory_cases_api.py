@@ -136,6 +136,44 @@ def test_creates_case_with_deduplicated_publication_links(
     assert detail["regulatory_case"] == created
 
 
+def test_updates_editable_case_metadata_without_changing_lifecycle(
+    client_with_seed: tuple[TestClient, Engine],
+) -> None:
+    client, _engine = client_with_seed
+
+    response = client.patch(
+        "/api/regulatory-cases/case-001",
+        json={
+            "title": "Уточнённое название документа",
+            "registration_number": "ФЗ № 321-ФЗ",
+            "responsible_user_id": "telegram:42",
+        },
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["title"] == "Уточнённое название документа"
+    assert updated["registration_number"] == "ФЗ № 321-ФЗ"
+    assert updated["responsible_user_id"] == "telegram:42"
+    assert updated["current_stage"] == "draft"
+    assert updated["origin"] == "manual"
+    assert client.get("/api/regulatory-cases/case-001").json()["timeline"] == []
+
+
+@pytest.mark.parametrize("payload", [{}, {"title": "  "}, {"title": None}])
+def test_invalid_case_patch_returns_422_without_changes(
+    client_with_seed: tuple[TestClient, Engine],
+    payload: dict[str, object],
+) -> None:
+    client, _engine = client_with_seed
+    before = client.get("/api/regulatory-cases/case-001").json()
+
+    response = client.patch("/api/regulatory-cases/case-001", json=payload)
+
+    assert response.status_code == 422
+    assert client.get("/api/regulatory-cases/case-001").json() == before
+
+
 def test_unknown_related_publication_returns_422_without_partial_case_or_link(
     client_with_seed: tuple[TestClient, Engine],
 ) -> None:

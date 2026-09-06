@@ -113,6 +113,9 @@ def test_only_implemented_api_routes_are_exposed() -> None:
     assert schema["paths"]["/api/regulatory-cases"]["post"]["operationId"] == (
         "createRegulatoryCase"
     )
+    assert schema["paths"]["/api/regulatory-cases/{case_id}"]["patch"][
+        "operationId"
+    ] == "updateRegulatoryCase"
     lifecycle = schema["paths"][
         "/api/regulatory-cases/{case_id}/lifecycle-events"
     ]["post"]

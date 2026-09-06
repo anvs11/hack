@@ -45,6 +45,46 @@ const stageCases: [LifecycleStage, string][] = [
 ]
 
 describe('regulatory case lifecycle display', () => {
+  it('lets a specialist correct automatically discovered dossier metadata', async () => {
+    let detail = {
+      ...regulatoryCaseDetail,
+      regulatory_case: {
+        ...regulatoryCaseDetail.regulatory_case,
+        origin: 'automatic' as const,
+        needs_review: true,
+        responsible_user_id: 'unassigned',
+      },
+    }
+    let received: Record<string, unknown> | null = null
+    server.use(
+      http.get('*/api/regulatory-cases/case-001', () => HttpResponse.json(detail)),
+      http.patch('*/api/regulatory-cases/case-001', async ({ request }) => {
+        received = await request.json() as Record<string, unknown>
+        detail = {
+          ...detail,
+          regulatory_case: { ...detail.regulatory_case, ...received },
+        }
+        return HttpResponse.json(detail.regulatory_case)
+      }),
+    )
+
+    renderCase()
+    expect(await screen.findByText('Черновик создан автоматически.')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Название документа'), {
+      target: { value: 'Проверенное название НПА' },
+    })
+    fireEvent.change(screen.getByLabelText('Номер документа'), {
+      target: { value: 'ФЗ № 321-ФЗ' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить реквизиты' }))
+
+    await waitFor(() => expect(received).toMatchObject({
+      title: 'Проверенное название НПА',
+      registration_number: 'ФЗ № 321-ФЗ',
+    }))
+    expect(await screen.findByText('Реквизиты досье сохранены.')).toBeInTheDocument()
+  })
+
   it.each(stageCases)('renders the Russian label for %s', async (stage, label) => {
     useCaseDetail({
       ...regulatoryCaseDetail,

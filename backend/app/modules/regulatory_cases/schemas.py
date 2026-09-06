@@ -3,7 +3,7 @@
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import AnyUrl, BaseModel, ConfigDict, Field
+from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class LifecycleStage(StrEnum):
@@ -34,6 +34,33 @@ class RegulatoryCaseCreate(BaseModel):
     current_stage: LifecycleStage
     responsible_user_id: str
     related_publication_ids: list[str] = Field(default_factory=list)
+
+
+class RegulatoryCasePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = None
+    registration_number: str | None = None
+    responsible_user_id: str | None = None
+
+    @field_validator("title", "registration_number", "responsible_user_id")
+    @classmethod
+    def normalize_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("value cannot be blank")
+        return normalized
+
+    @model_validator(mode="after")
+    def require_non_null_field(self):
+        submitted = self.model_fields_set
+        if not submitted:
+            raise ValueError("at least one editable field is required")
+        if any(getattr(self, field) is None for field in submitted):
+            raise ValueError("patch fields cannot be null")
+        return self
 
 
 class LifecycleEventCreate(BaseModel):

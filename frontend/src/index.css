@@ -1887,6 +1887,16 @@ svg {
   color: #876b38;
   line-height: 1.5;
 }
+.dossier-metadata-editor {
+  margin-top: 18px;
+}
+.dossier-metadata-editor summary {
+  width: fit-content;
+  margin-bottom: 12px;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 600;
+}
 /* Manual report and the separate automatic summary. */
 .report-tabs {
   display: flex;
