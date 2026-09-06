@@ -11,8 +11,13 @@ from backend.app.db import build_engine
 from backend.app.main import create_app
 from backend.app.modules.publications.models import Publication
 from backend.app.modules.regulatory_cases.models import LifecycleEvent, RegulatoryCase
-from backend.app.modules.sources.collection_service import collect_source
+from backend.app.modules.sources import collection_service
+from backend.app.modules.sources.collection_service import (
+    collect_enabled_sources,
+    collect_source,
+)
 from backend.app.modules.sources.models import DuplicateCandidate, Source
+from backend.app.modules.sources.schemas import SourceCollectionResult
 from backend.tests.seed import seed_test_database
 
 
@@ -141,6 +146,41 @@ def test_collect_enabled_sources_reports_partial_failure(
     assert sources[valid["id"]]["last_error"] is None
     assert sources[invalid["id"]]["last_success_at"] is None
     assert sources[invalid["id"]]["last_error"] is not None
+
+
+def test_collect_enabled_sources_runs_callback_after_each_source(
+    client_with_seed: tuple[TestClient, Engine],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, engine = client_with_seed
+    callbacks: list[str] = []
+
+    def collect(_session, source, *, embedder):
+        return SourceCollectionResult(
+            source_id=source.id,
+            status="success",
+            collected=0,
+            created=0,
+            already_seen=0,
+            content_duplicates=0,
+            exact_duplicates=0,
+            semantic_candidates=0,
+            error=None,
+        )
+
+    monkeypatch.setattr(collection_service, "_collect_source", collect)
+    with Session(engine) as session:
+        enabled = session.scalar(
+            select(func.count()).select_from(Source).where(Source.enabled == 1)
+        ) or 0
+    with Session(engine) as session:
+        report = collect_enabled_sources(
+            session,
+            after_source=lambda: callbacks.append("analyze"),
+        )
+
+    assert len(report.sources) == enabled
+    assert callbacks == ["analyze"] * enabled
 
 
 def test_collection_creates_a_reviewable_npa_draft_for_an_explicit_document_number(
