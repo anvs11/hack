@@ -289,7 +289,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["updateRegulatoryCase"];
         trace?: never;
     };
     "/api/regulatory-cases/{case_id}/publications/{publication_id}": {
@@ -655,6 +655,11 @@ export interface components {
             responsible_user_id: string;
             /** @description Defaults to an empty list when omitted */
             related_publication_ids?: string[];
+        };
+        RegulatoryCasePatch: {
+            title?: string;
+            registration_number?: string;
+            responsible_user_id?: string;
         };
         RegulatoryCase: {
             id: string;
@@ -1490,6 +1495,34 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    updateRegulatoryCase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: components["parameters"]["CaseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegulatoryCasePatch"];
+            };
+        };
+        responses: {
+            /** @description Editable dossier metadata updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegulatoryCase"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationError"];
         };
     };
     linkPublicationToCase: {

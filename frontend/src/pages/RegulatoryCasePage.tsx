@@ -11,7 +11,9 @@ import type {
   LifecycleEventCreate,
   LifecycleStage,
   PublicationDetail,
+  RegulatoryCase,
   RegulatoryCaseDetail,
+  RegulatoryCasePatch,
   Source,
 } from '../shared/api/types'
 import { formatActor, formatDate } from '../shared/format'
@@ -159,6 +161,8 @@ export function RegulatoryCasePage() {
         </section>
       )}
 
+      <DossierMetadataForm dossier={regulatoryCase} onSaved={refreshCase} />
+
       <section className="timeline-section" aria-labelledby="timeline-heading">
         <p className="eyebrow">История документа</p>
         <div className="timeline-title-row">
@@ -215,6 +219,70 @@ export function RegulatoryCasePage() {
         />
       </section>
     </article>
+  )
+}
+
+function DossierMetadataForm({
+  dossier,
+  onSaved,
+}: {
+  dossier: RegulatoryCase
+  onSaved: () => Promise<void>
+}) {
+  const [title, setTitle] = useState(dossier.title)
+  const [registrationNumber, setRegistrationNumber] = useState(dossier.registration_number)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [status, setStatus] = useState('')
+  const [error, setError] = useState('')
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (isSubmitting) return
+    setIsSubmitting(true)
+    setStatus('')
+    setError('')
+    const patch: RegulatoryCasePatch = {
+      title: title.trim(),
+      registration_number: registrationNumber.trim(),
+      responsible_user_id: getCurrentActorId(),
+    }
+    try {
+      await api.updateRegulatoryCase(dossier.id, patch)
+      await onSaved()
+      setStatus('Реквизиты досье сохранены.')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Не удалось сохранить реквизиты')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <details className="dossier-metadata-editor" open={dossier.needs_review}>
+      <summary>Проверить и изменить реквизиты</summary>
+      <form className="decision-form" onSubmit={submit}>
+        <label className="form-field form-field-wide">
+          <span>Название документа</span>
+          <input required value={title} onChange={(event) => setTitle(event.target.value)} />
+        </label>
+        <label className="form-field">
+          <span>Номер документа</span>
+          <input
+            required
+            value={registrationNumber}
+            onChange={(event) => setRegistrationNumber(event.target.value)}
+          />
+        </label>
+        <div className="decision-actions">
+          <span>После сохранения вы станете ответственным за досье.</span>
+          <button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Сохраняем…' : 'Сохранить реквизиты'}
+          </button>
+        </div>
+        {status && <p className="action-message form-field-wide" role="status">{status}</p>}
+        {error && <p className="form-error form-field-wide" role="alert">{error}</p>}
+      </form>
+    </details>
   )
 }
 

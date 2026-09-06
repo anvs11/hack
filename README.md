@@ -92,11 +92,17 @@ protected context из `rules.md`.
 - `GET /api/me/telegram-digest-settings`,
   `PATCH /api/me/telegram-digest-settings`;
 - `POST /api/telegram/report-deliveries`.
+- `GET/POST /api/regulatory-cases`, `GET/PATCH /api/regulatory-cases/{case_id}`;
+- `PUT /api/regulatory-cases/{case_id}/publications/{publication_id}`;
+- `POST /api/regulatory-cases/{case_id}/lifecycle-events`.
 
 Для карточки публикации также реализованы создание append-only решений,
 история анализов/решений, чтение и создание кейсов НПА, идемпотентная привязка
 публикации к кейсу и `POST /api/regulatory-cases/{case_id}/lifecycle-events`.
 Timeline загружается из БД; lifecycle events и решения специалиста остаются append-only.
+При явном упоминании типа НПА и номера collector создаёт проверяемый draft-досье;
+реквизиты можно исправить, но юридическая стадия меняется только отдельным событием
+по официальной ссылке.
 Канонические имена и JSON-форматы описаны только в `contracts/openapi.yaml`.
 
 Frontend позволяет вручную добавить публикацию, исправить title/tags, скрыть или

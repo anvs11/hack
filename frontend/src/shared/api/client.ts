@@ -16,6 +16,7 @@ import type {
   PublicationQuery,
   RegulatoryCaseDetail,
   RegulatoryCase,
+  RegulatoryCasePatch,
   Source,
   SourceCreate,
   SourcePatch,
@@ -182,6 +183,14 @@ export const api = {
       `/api/regulatory-cases/${encodeURIComponent(id)}`,
       { signal },
     ),
+  updateRegulatoryCase: (
+    id: string,
+    patch: RegulatoryCasePatch,
+    signal?: AbortSignal,
+  ) => request<RegulatoryCase>(
+    `/api/regulatory-cases/${encodeURIComponent(id)}`,
+    { method: 'PATCH', body: patch, signal },
+  ),
   createLifecycleEvent: (
     caseId: string,
     event: LifecycleEventCreate,

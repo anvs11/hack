@@ -519,6 +519,24 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/RegulatoryCaseDetail"}
         "404": {$ref: "#/components/responses/NotFound"}
+    patch:
+      tags: [regulatory-cases]
+      operationId: updateRegulatoryCase
+      parameters:
+        - $ref: "#/components/parameters/CaseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RegulatoryCasePatch"}
+      responses:
+        "200":
+          description: Editable dossier metadata updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RegulatoryCase"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "422": {$ref: "#/components/responses/ValidationError"}
 
   /api/regulatory-cases/{case_id}/publications/{publication_id}:
     put:
@@ -1219,6 +1237,15 @@ components:
           type: array
           items: {type: string}
           description: Defaults to an empty list when omitted
+
+    RegulatoryCasePatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title: {type: string, minLength: 1}
+        registration_number: {type: string, minLength: 1}
+        responsible_user_id: {type: string, minLength: 1}
 
     RegulatoryCase:
       type: object

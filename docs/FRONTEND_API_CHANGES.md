@@ -4,6 +4,15 @@
 Область: синхронизация frontend с backend-контрактом и необходимые пользовательские
 действия. `project_analysis/` не изменялся.
 
+## Дополнение 2026-09-06: автодосье НПА
+
+- `RegulatoryCase` содержит `origin: manual | automatic` и `needs_review`.
+- `PATCH /api/regulatory-cases/{case_id}` исправляет `title`,
+  `registration_number` и `responsible_user_id`.
+- Frontend показывает предупреждение для автодосье и форму проверки реквизитов.
+- PATCH не меняет lifecycle: стадия по-прежнему требует отдельного официального
+  события.
+
 ## Добавлено в v0.6.0
 
 | Возможность | Frontend | Backend API |

@@ -1,6 +1,7 @@
 """Synchronous collection and ingestion orchestration."""
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -92,6 +93,8 @@ def collect_source(
 
 def collect_enabled_sources(
     session: Session,
+    *,
+    after_source: Callable[[], None] | None = None,
 ) -> CollectionReport:
     started_at = datetime.now(UTC)
     with session.begin():
@@ -106,6 +109,8 @@ def collect_enabled_sources(
         source = _load_source(session, source_id)
         if source is not None:
             results.append(_collect_source(session, source, embedder=embedder))
+            if after_source is not None:
+                after_source()
     return _collection_report(results, started_at)
 
 

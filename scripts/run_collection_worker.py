@@ -20,7 +20,10 @@ from backend.app.config import (
     get_telegram_bot_token,
 )
 from backend.app.db import build_engine, create_schema
-from backend.app.modules.analysis.batch_service import analyze_pending_publications
+from backend.app.modules.analysis.batch_service import (
+    AnalysisBatchReport,
+    analyze_pending_publications,
+)
 from backend.app.modules.sources.collection_service import collect_enabled_sources
 from backend.app.modules.users.telegram_digest import deliver_pending_telegram_digests
 
@@ -47,12 +50,24 @@ def main() -> None:
     try:
         while True:
             with Session(engine, expire_on_commit=False) as session:
-                report = collect_enabled_sources(session)
-                analysis_report = analyze_pending_publications(
+                analysis_reports: list[AnalysisBatchReport] = []
+
+                def analyze_after_source() -> None:
+                    analysis_reports.append(
+                        analyze_pending_publications(
+                            session,
+                            limit=get_auto_analysis_batch_size(),
+                            min_content_chars=get_auto_analysis_min_content_chars(),
+                        )
+                    )
+
+                report = collect_enabled_sources(
                     session,
-                    limit=get_auto_analysis_batch_size(),
-                    min_content_chars=get_auto_analysis_min_content_chars(),
+                    after_source=analyze_after_source,
                 )
+                if not analysis_reports:
+                    analyze_after_source()
+                analysis_report = _combine_analysis_reports(analysis_reports)
                 telegram_report = deliver_pending_telegram_digests(
                     session,
                     bot_token=get_telegram_bot_token(),
@@ -75,6 +90,23 @@ def main() -> None:
         return
     finally:
         engine.dispose()
+
+
+def _combine_analysis_reports(
+    reports: list[AnalysisBatchReport],
+) -> AnalysisBatchReport:
+    return AnalysisBatchReport(
+        pending=reports[-1].pending,
+        attempted=sum(report.attempted for report in reports),
+        created=sum(report.created for report in reports),
+        skipped_short=reports[-1].skipped_short,
+        failed=sum(report.failed for report in reports),
+        failures=tuple(
+            failure
+            for report in reports
+            for failure in report.failures
+        ),
+    )
 
 
 if __name__ == "__main__":

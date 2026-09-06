@@ -25,6 +25,7 @@ from backend.app.modules.regulatory_cases.schemas import (
     RegulatoryCaseCreate,
     RegulatoryCaseDetail,
     RegulatoryCaseOrigin,
+    RegulatoryCasePatch,
     RegulatoryCaseResponse,
 )
 
@@ -201,6 +202,29 @@ def create_lifecycle_event(
         session.flush()
 
     return _event_response(event)
+
+
+def update_regulatory_case(
+    session: Session,
+    case_id: str,
+    patch: RegulatoryCasePatch,
+) -> RegulatoryCaseResponse | None:
+    with session.begin():
+        case = session.get(RegulatoryCaseModel, case_id)
+        if case is None:
+            return None
+        for field in patch.model_fields_set:
+            setattr(case, field, getattr(patch, field))
+        case.updated_at = _utc_iso(datetime.now(UTC))
+        publication_ids = list(
+            session.scalars(
+                select(RegulatoryCasePublication.publication_id)
+                .where(RegulatoryCasePublication.case_id == case_id)
+                .order_by(RegulatoryCasePublication.publication_id)
+            )
+        )
+        session.flush()
+    return _case_response(case, publication_ids)
 
 
 def link_publication_to_case(

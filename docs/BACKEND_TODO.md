@@ -232,13 +232,20 @@ Backend должен:
 5. отклонить неверный переход с 409;
 6. добавить событие append-only;
 7. в той же транзакции обновить current stage проекции кейса.
+8. автоматически создать только проверяемый draft при явном типе НПА и номере;
+9. позволить специалисту исправить реквизиты и назначить ответственного.
 
 HTTP-точки:
 
 - `GET/POST /api/regulatory-cases`;
-- `GET /api/regulatory-cases/{case_id}`;
+- `GET/PATCH /api/regulatory-cases/{case_id}`;
 - `PUT /api/regulatory-cases/{case_id}/publications/{publication_id}`;
 - `POST /api/regulatory-cases/{case_id}/lifecycle-events`.
+
+Статус 2026-09-06: пункты 8–9 реализованы. Автодосье получает
+`origin=automatic`, `needs_review=true` и не создаёт lifecycle event. Повторные
+упоминания одного номера досвязываются идемпотентно. Подробнее —
+[`AUTOMATIC_NPA_CASES.md`](AUTOMATIC_NPA_CASES.md).
 
 ### 1.7. Дайджест руководителю
 

@@ -9,6 +9,7 @@ import type {
   LifecycleEvent,
   LifecycleEventCreate,
   PublicationList,
+  RegulatoryCasePatch,
   Source,
   SourceCreate,
   SourcePatch,
@@ -160,6 +161,29 @@ describe('publication API client', () => {
     expect(await api.listRegulatoryCases()).toEqual(regulatoryCases)
     await expect(api.linkPublicationToCase('case-001', 'pub-001')).resolves.toBeUndefined()
     expect(linked).toBe(true)
+  })
+
+  it('updates regulatory dossier metadata through the encoded case path', async () => {
+    const patch = {
+      title: 'Уточнённое название',
+      registration_number: 'ФЗ № 321-ФЗ',
+      responsible_user_id: 'telegram:42',
+    } satisfies RegulatoryCasePatch
+    let received: RegulatoryCasePatch | null = null
+    let path = ''
+    server.use(
+      http.patch('*/api/regulatory-cases/:caseId', async ({ request }) => {
+        path = new URL(request.url).pathname
+        received = await request.json() as RegulatoryCasePatch
+        return HttpResponse.json({ ...regulatoryCases[0], ...patch })
+      }),
+    )
+
+    const updated = await api.updateRegulatoryCase('case/encoded', patch)
+
+    expect(path).toBe('/api/regulatory-cases/case%2Fencoded')
+    expect(received).toEqual(patch)
+    expect(updated.title).toBe('Уточнённое название')
   })
 
   it('creates a lifecycle event through the encoded contract path and JSON body', async () => {

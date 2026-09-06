@@ -11,6 +11,7 @@ from backend.app.modules.regulatory_cases.schemas import (
     LifecycleEventResponse,
     RegulatoryCaseCreate,
     RegulatoryCaseDetail,
+    RegulatoryCasePatch,
     RegulatoryCaseResponse,
 )
 from backend.app.modules.regulatory_cases.service import (
@@ -19,6 +20,7 @@ from backend.app.modules.regulatory_cases.service import (
     get_regulatory_case as read_regulatory_case,
     link_publication_to_case,
     list_regulatory_cases as read_regulatory_cases,
+    update_regulatory_case as persist_regulatory_case_patch,
 )
 
 
@@ -62,6 +64,22 @@ def get_regulatory_case(
     if detail is None:
         raise HTTPException(status_code=404, detail="Регуляторный кейс не найден")
     return detail
+
+
+@router.patch(
+    "/api/regulatory-cases/{case_id}",
+    operation_id="updateRegulatoryCase",
+    response_model=RegulatoryCaseResponse,
+)
+def update_regulatory_case(
+    case_id: str,
+    patch: RegulatoryCasePatch,
+    session: Annotated[Session, Depends(get_session)],
+) -> RegulatoryCaseResponse:
+    case = persist_regulatory_case_patch(session, case_id, patch)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Регуляторный кейс не найден")
+    return case
 
 
 @router.post(
