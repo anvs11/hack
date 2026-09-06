@@ -16,6 +16,7 @@ services:
       HACK_DATABASE_URL: sqlite:////data/app.sqlite3
       HACK_TELEGRAM_BOT_TOKEN_FILE: /run/secrets/telegram_bot_token
       HACK_TELEGRAM_AUTH_MAX_AGE_SECONDS: ${HACK_TELEGRAM_AUTH_MAX_AGE_SECONDS:-86400}
+      HACK_ALLOW_LOCAL_IDENTITY: ${HACK_ALLOW_LOCAL_IDENTITY:-0}
       HACK_LLM_PROVIDER: ${HACK_LLM_PROVIDER:-openai_compatible}
       HACK_LLM_API_BASE_URL: ${HACK_LLM_API_BASE_URL:-}
       HACK_LLM_API_KEY_FILE: /run/secrets/llm_api_key
@@ -37,9 +38,23 @@ services:
     build:
       context: ..
       dockerfile: deploy/backend.Dockerfile
-    command: ["python", "scripts/run_collection_worker.py", "--db", "/data/app.sqlite3", "--interval", "${HACK_COLLECTION_INTERVAL_SECONDS:-1800}"]
+    command: ["python", "scripts/run_collection_worker.py", "--db", "/data/app.sqlite3", "--interval", "${HACK_COLLECTION_INTERVAL_SECONDS:-900}"]
+    environment:
+      HACK_LLM_PROVIDER: ${HACK_LLM_PROVIDER:-openai_compatible}
+      HACK_LLM_API_BASE_URL: ${HACK_LLM_API_BASE_URL:-}
+      HACK_LLM_API_KEY_FILE: /run/secrets/llm_api_key
+      HACK_LLM_API_MODEL_ID: ${HACK_LLM_API_MODEL_ID:-Qwen/Qwen3.5-0.8B}
+      HACK_LLM_API_TIMEOUT_SECONDS: ${HACK_LLM_API_TIMEOUT_SECONDS:-120}
+      HACK_LLM_MAX_NEW_TOKENS: ${HACK_LLM_MAX_NEW_TOKENS:-1024}
+      HACK_LLM_REASONING_EFFORT: ${HACK_LLM_REASONING_EFFORT:-}
+      HACK_AUTO_ANALYSIS_BATCH_SIZE: ${HACK_AUTO_ANALYSIS_BATCH_SIZE:-20}
+      HACK_AUTO_ANALYSIS_MIN_CONTENT_CHARS: ${HACK_AUTO_ANALYSIS_MIN_CONTENT_CHARS:-200}
+      HACK_TELEGRAM_BOT_TOKEN_FILE: /run/secrets/telegram_bot_token
     volumes:
       - app-data:/data
+    secrets:
+      - llm_api_key
+      - telegram_bot_token
     depends_on:
       catalog:
         condition: service_completed_successfully

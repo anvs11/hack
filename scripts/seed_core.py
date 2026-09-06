@@ -1,4 +1,4 @@
-"""Reusable standard-library implementation of the offline demo seed import."""
+"""Reusable import for synthetic data used only by automated tests."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SEED_DIR = ROOT / "data" / "seed"
-DEFAULT_DB = ROOT / ".local" / "demo.sqlite3"
+DEFAULT_DB = ROOT / ".local" / "test-fixture.sqlite3"
 
 
 def load_json(name: str) -> list[dict[str, Any]]:
@@ -49,11 +49,11 @@ def validate_seed(
     if {item["publication_id"] for item in analyses} != publication_ids:
         raise ValueError("every publication must have exactly one replay analysis")
     if any(item.get("analyzer") != "replay" for item in analyses):
-        raise ValueError("all demo analyses must use the replay analyzer")
+        raise ValueError("all synthetic analyses must use the replay analyzer")
     if regulatory_cases is not None:
         case_ids = {item["id"] for item in regulatory_cases}
         if len(regulatory_cases) != 1 or len(case_ids) != 1:
-            raise ValueError("expected exactly one unique demo regulatory case")
+            raise ValueError("expected exactly one unique synthetic regulatory case")
         if any(
             publication_id not in publication_ids
             for item in regulatory_cases
@@ -113,6 +113,9 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
             registration_number TEXT NOT NULL,
             current_stage TEXT NOT NULL,
             responsible_user_id TEXT NOT NULL,
+            origin TEXT NOT NULL DEFAULT 'manual',
+            needs_review INTEGER NOT NULL DEFAULT 0,
+            identifier_key TEXT UNIQUE,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
@@ -241,8 +244,9 @@ def import_seed(database: Path) -> tuple[int, int, int]:
                 """
                 INSERT INTO regulatory_cases (
                     id, title, registration_number, current_stage,
-                    responsible_user_id, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    responsible_user_id, origin, needs_review, identifier_key,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     title = excluded.title,
                     registration_number = excluded.registration_number,
@@ -254,6 +258,9 @@ def import_seed(database: Path) -> tuple[int, int, int]:
                     regulatory_case["registration_number"],
                     regulatory_case["current_stage"],
                     regulatory_case["responsible_user_id"],
+                    regulatory_case.get("origin", "manual"),
+                    int(regulatory_case.get("needs_review", False)),
+                    regulatory_case.get("identifier_key"),
                     regulatory_case["created_at"],
                     regulatory_case["updated_at"],
                 ),

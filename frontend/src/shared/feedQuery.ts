@@ -22,9 +22,7 @@ export const sourceTypes: [SourceType, string][] = [
   ['rss', 'СМИ / RSS'],
   ['regulator', 'Регулятор'],
   ['telegram', 'Telegram'],
-  ['telegram_archive', 'Telegram-архив'],
   ['file', 'Файл'],
-  ['seed', 'Demo seed'],
 ]
 export const sourceTypeLabel = (type?: string) =>
   sourceTypes.find((s) => s[0] === type)?.[1] ?? 'Тип недоступен'

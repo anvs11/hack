@@ -110,6 +110,18 @@ class Criteria(BaseModel):
     )
 
 
+class PublicationSourceReferenceResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_id: str
+    external_id: str
+    title: str
+    original_url: AnyUrl
+    published_at: datetime
+    collected_at: datetime
+    is_primary: bool
+
+
 class PublicationResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -122,13 +134,13 @@ class PublicationResponse(BaseModel):
     collected_at: datetime
     content: str
     content_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
-    is_demo: bool
     latest_analysis_id: str | None = None
     latest_revision_id: str | None = None
     tags: list[str] = Field(default_factory=list)
     is_hidden: bool = False
     is_manual: bool = False
     updated_at: datetime
+    source_references: list[PublicationSourceReferenceResponse]
 
 
 class PublicationCreate(BaseModel):

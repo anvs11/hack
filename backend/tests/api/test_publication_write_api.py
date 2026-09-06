@@ -9,13 +9,14 @@ from sqlalchemy.orm import Session
 from backend.app.db import build_engine
 from backend.app.main import create_app
 from backend.app.modules.publications.models import Publication, PublicationRevision
+from backend.tests.seed import seed_test_database
 
 
 @pytest.fixture
 def client_with_seed(tmp_path: Path) -> Generator[tuple[TestClient, Engine], None, None]:
     engine = build_engine(f"sqlite:///{tmp_path / 'publication-write.sqlite3'}")
+    seed_test_database(engine)
     with TestClient(create_app(database_engine=engine)) as client:
-        assert client.post("/api/demo/seed").status_code == 200
         yield client, engine
     engine.dispose()
 

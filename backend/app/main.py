@@ -17,6 +17,7 @@ from backend.app.modules.publications.router import router as publications_route
 from backend.app.modules.regulatory_cases.router import router as regulatory_cases_router
 from backend.app.modules.sources.router import router as sources_router
 from backend.app.modules.sources.dedup_router import router as dedup_router
+from backend.app.modules.users.router import router as users_router
 
 
 LOCAL_FRONTEND_ORIGINS = (
@@ -41,7 +42,7 @@ def create_app(database_engine: Engine | None = None) -> FastAPI:
 
     application = FastAPI(
         title="PR/GR AI Analytics API",
-        version="0.4.0",
+        version="0.6.0",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -64,6 +65,7 @@ def create_app(database_engine: Engine | None = None) -> FastAPI:
     application.include_router(publications_router)
     application.include_router(regulatory_cases_router)
     application.include_router(sources_router)
+    application.include_router(users_router)
 
     @application.get(
         "/api/health",

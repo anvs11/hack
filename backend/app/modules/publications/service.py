@@ -3,7 +3,6 @@
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from hashlib import sha256
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
@@ -15,7 +14,12 @@ from backend.app.errors import ApiError
 from backend.app.modules.analysis.models import AnalysisVersion
 from backend.app.modules.decisions.models import SpecialistDecision as DecisionModel
 from backend.app.modules.decisions.service import decision_response
-from backend.app.modules.publications.models import Publication, PublicationRevision
+from backend.app.modules.publications.models import (
+    Publication,
+    PublicationRevision,
+    PublicationSourceReference,
+)
+from backend.app.modules.publications.hashing import content_hash
 from backend.app.modules.publications.schemas import (
     AnalysisVersionResponse,
     Category,
@@ -26,9 +30,10 @@ from backend.app.modules.publications.schemas import (
     PublicationPatch,
     PublicationResponse,
     PublicationRevisionResponse,
+    PublicationSourceReferenceResponse,
     PublicationVisibility,
 )
-from backend.app.modules.sources.models import Source
+from backend.app.modules.sources.models import DuplicateCandidate, Source
 from backend.app.modules.sources.schemas import SourceType
 
 
@@ -65,12 +70,22 @@ def list_publications(
     decisions = _latest_decisions(session)
     revisions = _latest_revisions(session)
     source_types = dict(session.execute(select(Source.id, Source.type)).all())
+    folded_publication_ids = set(
+        session.scalars(
+            select(DuplicateCandidate.publication_id).where(
+                DuplicateCandidate.status == "duplicate"
+            )
+        )
+    )
 
     matched: list[PublicationDetail] = []
     for publication in publications:
+        if publication.id in folded_publication_ids:
+            continue
         analysis = analyses.get(publication.id)
         payload = json.loads(publication.payload_json)
         detail = _publication_detail(
+            session,
             publication,
             analysis,
             decisions.get(publication.id),
@@ -113,6 +128,7 @@ def get_publication(session: Session, publication_id: str) -> PublicationDetail 
         .limit(1)
     ).first()
     return _publication_detail(
+        session,
         publication,
         analysis,
         decision,
@@ -127,7 +143,7 @@ def create_publication(
 ) -> PublicationDetail:
     now = datetime.now(UTC)
     canonical_url = _canonical_url(str(request.original_url))
-    digest = f"sha256:{sha256(request.content.encode('utf-8')).hexdigest()}"
+    digest = content_hash(request.content)
     publication_id = f"publication-{uuid4().hex}"
     published_at = _iso_datetime(request.published_at)
     created_at = _iso_datetime(now)
@@ -165,7 +181,6 @@ def create_publication(
             "collected_at": created_at,
             "content": request.content,
             "content_hash": digest,
-            "is_demo": False,
             "is_manual": True,
             "tags": request.tags,
         }
@@ -190,7 +205,7 @@ def create_publication(
         )
         session.add_all((publication, revision))
         session.flush()
-    return _publication_detail(publication, None, None, revision, payload)
+    return _publication_detail(session, publication, None, None, revision, payload)
 
 
 def update_publication(
@@ -290,6 +305,7 @@ def _analysis_response(row: AnalysisVersion | None) -> AnalysisVersionResponse |
 
 
 def _publication_detail(
+    session: Session,
     row: Publication,
     analysis_row: AnalysisVersion | None,
     decision_row: DecisionModel | None,
@@ -307,7 +323,6 @@ def _publication_detail(
         collected_at=payload.get("collected_at", row.published_at),
         content=payload["content"],
         content_hash=row.content_hash,
-        is_demo=bool(payload.get("is_demo", False)),
         latest_analysis_id=analysis.id if analysis else None,
         latest_revision_id=revision_row.id if revision_row else None,
         tags=json.loads(revision_row.tags_json) if revision_row else payload.get("tags", []),
@@ -318,12 +333,93 @@ def _publication_detail(
             if revision_row
             else payload.get("collected_at", row.published_at)
         ),
+        source_references=_source_references(session, row, payload),
     )
     return PublicationDetail(
         publication=publication,
         latest_analysis=analysis,
         latest_decision=decision_response(decision_row) if decision_row else None,
     )
+
+
+def _source_references(
+    session: Session,
+    row: Publication,
+    payload: dict[str, Any],
+) -> list[PublicationSourceReferenceResponse]:
+    references = [
+        PublicationSourceReferenceResponse(
+            source_id=row.source_id,
+            external_id=row.external_id,
+            title=payload["title"],
+            original_url=row.canonical_url,
+            published_at=row.published_at,
+            collected_at=payload.get("collected_at", row.published_at),
+            is_primary=True,
+        )
+    ]
+    extra_rows = list(
+        session.scalars(
+            select(PublicationSourceReference)
+            .where(PublicationSourceReference.publication_id == row.id)
+            .order_by(
+                PublicationSourceReference.published_at.desc(),
+                PublicationSourceReference.id,
+            )
+        )
+    )
+
+    folded_rows = list(
+        session.scalars(
+            select(Publication)
+            .join(
+                DuplicateCandidate,
+                DuplicateCandidate.publication_id == Publication.id,
+            )
+            .where(
+                DuplicateCandidate.candidate_publication_id == row.id,
+                DuplicateCandidate.status == "duplicate",
+            )
+            .order_by(Publication.published_at.desc(), Publication.id)
+        )
+    )
+    for folded in folded_rows:
+        folded_payload = json.loads(folded.payload_json)
+        references.append(
+            PublicationSourceReferenceResponse(
+                source_id=folded.source_id,
+                external_id=folded.external_id,
+                title=folded_payload["title"],
+                original_url=folded.canonical_url,
+                published_at=folded.published_at,
+                collected_at=folded_payload.get("collected_at", folded.published_at),
+                is_primary=False,
+            )
+        )
+        extra_rows.extend(
+            session.scalars(
+                select(PublicationSourceReference).where(
+                    PublicationSourceReference.publication_id == folded.id
+                )
+            )
+        )
+
+    references.extend(
+        PublicationSourceReferenceResponse(
+            source_id=extra.source_id,
+            external_id=extra.external_id,
+            title=extra.title,
+            original_url=extra.original_url,
+            published_at=extra.published_at,
+            collected_at=extra.collected_at,
+            is_primary=False,
+        )
+        for extra in extra_rows
+    )
+    unique: dict[str, PublicationSourceReferenceResponse] = {}
+    for reference in references:
+        unique.setdefault(str(reference.original_url), reference)
+    return list(unique.values())
 
 
 def _matches(
@@ -380,8 +476,8 @@ def _sort_key(detail: PublicationDetail) -> tuple[int, float, str]:
         else Priority.UNKNOWN
     )
     return (
-        PRIORITY_ORDER[priority],
         -_utc(detail.publication.published_at).timestamp(),
+        PRIORITY_ORDER[priority],
         detail.publication.id,
     )
 

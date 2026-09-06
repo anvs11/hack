@@ -32,7 +32,7 @@ describe('analyst feed', () => {
 
     expect(card).not.toBeNull()
     const cardQueries = within(card!)
-    expect(cardQueries.getByText('Отраслевой Telegram-архив (demo)')).toBeInTheDocument()
+    expect(cardQueries.getByText('Тестовый Telegram-канал')).toBeInTheDocument()
     expect(cardQueries.getByText(formatDate('2026-09-01T09:15:00Z'))).toBeInTheDocument()
     expect(cardQueries.getByText('Категория · Регуляторика')).toBeInTheDocument()
     expect(cardQueries.getByText('AI-приоритет · Средний')).toBeInTheDocument()
@@ -214,7 +214,7 @@ describe('publication mock handler', () => {
   it('filters by each approved parameter and combines filters', async () => {
     expect((await api.listPublications({ q: 'проект' })).items.map((item) => item.publication.id)).toEqual(['pub-001'])
     expect((await api.listPublications({ source_id: 'source-media-rss-1' })).items.map((item) => item.publication.id)).toEqual(['pub-008'])
-    expect((await api.listPublications({ source_type: 'telegram_archive' })).items.map((item) => item.publication.id)).toEqual(['pub-005'])
+    expect((await api.listPublications({ source_type: 'telegram' })).items.map((item) => item.publication.id)).toEqual(['pub-005'])
     expect((await api.listPublications({ category: 'reputation' })).items.map((item) => item.publication.id)).toEqual(['pub-008'])
     expect((await api.listPublications({ proposed_priority: 'high' })).items.map((item) => item.publication.id)).toEqual(['pub-001'])
     expect((await api.listPublications({ needs_review: false })).items.map((item) => item.publication.id)).toEqual(['pub-009', 'pub-004'])
@@ -234,7 +234,7 @@ describe('publication mock handler', () => {
     const secondPage = await api.listPublications({ limit: 2, offset: 2 })
 
     expect(firstPage.total).toBe(5)
-    expect(firstPage.items.map((item) => item.publication.id)).toEqual(['pub-001', 'pub-009'])
-    expect(secondPage.items.map((item) => item.publication.id)).toEqual(['pub-008', 'pub-005'])
+    expect(firstPage.items.map((item) => item.publication.id)).toEqual(['pub-009', 'pub-008'])
+    expect(secondPage.items.map((item) => item.publication.id)).toEqual(['pub-005', 'pub-004'])
   })
 })

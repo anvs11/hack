@@ -21,6 +21,11 @@ class ConfirmationSourceType(StrEnum):
     OFFICIAL_PUBLICATION = "official_publication"
 
 
+class RegulatoryCaseOrigin(StrEnum):
+    MANUAL = "manual"
+    AUTOMATIC = "automatic"
+
+
 class RegulatoryCaseCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -50,6 +55,8 @@ class RegulatoryCaseResponse(BaseModel):
     registration_number: str
     current_stage: LifecycleStage
     responsible_user_id: str
+    origin: RegulatoryCaseOrigin
+    needs_review: bool
     related_publication_ids: list[str]
     created_at: datetime
     updated_at: datetime

@@ -32,7 +32,6 @@ def create_source(session: Session, source: SourceCreate) -> SourceResponse:
         "last_checked_at": None,
         "last_success_at": None,
         "last_error": None,
-        "is_demo": False,
     }
     row = SourceModel(
         id=source_id,
@@ -86,5 +85,4 @@ def _source_response(row: SourceModel) -> SourceResponse:
         last_checked_at=payload.get("last_checked_at"),
         last_success_at=payload.get("last_success_at"),
         last_error=payload.get("last_error"),
-        is_demo=bool(payload.get("is_demo", False)),
     )

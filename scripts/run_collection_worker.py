@@ -2,6 +2,7 @@
 """Run live collection once or periodically in a separate process."""
 
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
@@ -12,12 +13,19 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from backend.app.config import REPOSITORY_ROOT
+from backend.app.config import (
+    REPOSITORY_ROOT,
+    get_auto_analysis_batch_size,
+    get_auto_analysis_min_content_chars,
+    get_telegram_bot_token,
+)
 from backend.app.db import build_engine, create_schema
+from backend.app.modules.analysis.batch_service import analyze_pending_publications
 from backend.app.modules.sources.collection_service import collect_enabled_sources
+from backend.app.modules.users.telegram_digest import deliver_pending_telegram_digests
 
 
-DEFAULT_COLLECTION_INTERVAL_SECONDS = 30 * 60
+DEFAULT_COLLECTION_INTERVAL_SECONDS = 15 * 60
 
 
 def main() -> None:
@@ -27,7 +35,7 @@ def main() -> None:
         "--interval",
         type=int,
         default=DEFAULT_COLLECTION_INTERVAL_SECONDS,
-        help="Seconds between collection runs (default: 1800 / 30 minutes)",
+        help="Seconds between collection runs (default: 900 / 15 minutes)",
     )
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
@@ -40,7 +48,26 @@ def main() -> None:
         while True:
             with Session(engine, expire_on_commit=False) as session:
                 report = collect_enabled_sources(session)
-            print(report.model_dump_json(), flush=True)
+                analysis_report = analyze_pending_publications(
+                    session,
+                    limit=get_auto_analysis_batch_size(),
+                    min_content_chars=get_auto_analysis_min_content_chars(),
+                )
+                telegram_report = deliver_pending_telegram_digests(
+                    session,
+                    bot_token=get_telegram_bot_token(),
+                )
+            print(
+                json.dumps(
+                    {
+                        "collection": report.model_dump(mode="json"),
+                        "analysis": analysis_report.as_dict(),
+                        "telegram": telegram_report.as_dict(),
+                    },
+                    ensure_ascii=False,
+                ),
+                flush=True,
+            )
             if args.once:
                 return
             time.sleep(args.interval)

@@ -1,6 +1,7 @@
 import type { PublicationDetail, Source } from './api/types'
 import { escapeMarkdown } from './digest'
-import { formatCategory, formatPriority } from './format'
+import { sourceTypeLabel } from './feedQuery'
+import { formatCategory, formatPriority, formatSourceName } from './format'
 
 export type ReportItem = {
   id: string
@@ -90,7 +91,6 @@ export function validDetail(v: unknown): v is PublicationDetail {
     !date(p.published_at) ||
     !date(p.updated_at) ||
     !strings(p.tags) ||
-    typeof p.is_demo !== 'boolean' ||
     typeof p.is_hidden !== 'boolean'
   )
     return false
@@ -195,16 +195,15 @@ export function reportMarkdown(draft: ReportDraft) {
       return [
         `## ${index + 1}. ${e(p.title)}`,
         '',
-        `Источник: ${e(item.source?.name ?? p.source_id)} · ${e(item.source?.type ?? 'Тип недоступен')}`,
+        `Источник: ${e(formatSourceName(item.source?.name ?? p.source_id))} · ${e(item.source ? sourceTypeLabel(item.source.type) : 'Тип недоступен')}`,
         `Дата публикации: ${p.published_at}`,
         `Оригинал: ${e(safeUrl(p.original_url) ?? 'Недопустимая ссылка')}`,
-        `Данные: ${p.is_demo ? 'демонстрационные' : 'рабочие'}; видимость: ${p.is_hidden ? 'скрыта' : 'активна'}`,
+        `Видимость: ${p.is_hidden ? 'скрыта' : 'активна'}`,
         '',
         `${a ? 'AI-саммари' : 'Фрагмент исходного материала (анализа нет)'}: ${e(a?.summary ?? p.content.slice(0, 500))}`,
         '',
         `Категория AI: ${formatCategory(a?.category ?? 'unknown')}`,
         `AI-приоритет: ${formatPriority(a?.proposed_priority ?? 'unknown')}`,
-        `Важность: ${a?.importance_score == null ? 'Нет данных' : `${a.importance_score} / 18`}`,
         `Флаг AI: ${a ? (a.needs_review ? 'Требует проверки' : 'Не запрашивает проверку') : 'Нет анализа'}`,
         `Неопределённость: ${a ? `${Math.round(a.uncertainty * 100)}%` : 'Нет данных'}`,
         `Решение: ${decisionStatus(item.detail)}`,

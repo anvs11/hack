@@ -111,7 +111,7 @@ export type TelegramRuntimeInfo = {
   hasInitData: boolean
 }
 
-export function getCurrentActorId(fallback = 'user-gr-001') {
+export function getCurrentActorId(fallback = 'local:gr') {
   const telegramUserId = typeof document === 'undefined'
     ? undefined
     : document.documentElement.dataset.telegramUserId
@@ -124,6 +124,10 @@ export function getTelegramRuntimeInfo(): TelegramRuntimeInfo {
     isAvailable: Boolean(webApp),
     hasInitData: Boolean(webApp?.initData),
   }
+}
+
+export function getTelegramInitData() {
+  return getWebApp()?.initData?.trim() || null
 }
 
 export function connectTelegramRuntime(

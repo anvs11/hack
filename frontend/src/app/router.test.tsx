@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { RouterProvider } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import { api } from '../shared/api/client'
@@ -12,7 +12,7 @@ describe('application routes', () => {
     ['/sources', 'Источники'],
     ['/digest', 'Отчёт для руководителя'],
     ['/digest?tab=auto', 'Дайджест для руководителя'],
-    ['/regulatory-cases', 'Кейсы НПА'],
+    ['/regulatory-cases', 'Нормативные документы'],
   ])('opens %s', async (path, heading) => {
     render(<RouterProvider router={createTestRouter(path)} />)
 
@@ -28,13 +28,32 @@ describe('application routes', () => {
       await screen.findByRole('heading', { name: 'Страница не найдена' }),
     ).toBeInTheDocument()
   })
+
+  it('switches the amount of visible detail and remembers the choice', async () => {
+    render(<RouterProvider router={createTestRouter('/feed')} />)
+
+    const compact = await screen.findByRole('button', { name: 'Кратко' })
+    fireEvent.click(compact)
+
+    expect(compact).toHaveAttribute('aria-pressed', 'true')
+    expect(document.querySelector('.app-shell')).toHaveClass('view-mode-compact')
+    expect(localStorage.getItem('regradar:view-mode')).toBe('compact')
+  })
+
+  it('redirects the removed duplicate queue to monitoring', async () => {
+    render(<RouterProvider router={createTestRouter('/duplicates')} />)
+
+    expect(
+      await screen.findByRole('heading', { name: /Мониторинг/, level: 1 }),
+    ).toBeInTheDocument()
+  })
 })
 
 describe('mock API', () => {
   it('returns a typed publication list and renders its data', async () => {
     const response = await api.listPublications()
     expect(response.total).toBeGreaterThan(0)
-    expect(response.items[0]?.publication.id).toBe('pub-001')
+    expect(response.items[0]?.publication.id).toBe('pub-009')
 
     render(<RouterProvider router={createTestRouter('/feed')} />)
     expect(

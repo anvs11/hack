@@ -250,7 +250,7 @@ describe('digest serializers', () => {
     )
 
     expect(markdown).toContain('## Подтверждённые критические материалы')
-    expect(markdown).toContain('## Изменения стадий НПА')
+    expect(markdown).toContain('## Изменения нормативных документов')
     expect(markdown).toContain('## Требующие проверки карточки')
     expect(markdown).toContain('## Действия пользователей')
   })

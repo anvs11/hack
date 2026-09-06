@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from backend.app.modules.publications.models import Publication
+from backend.app.modules.publications.models import Publication, PublicationSourceReference
 from backend.app.modules.sources.collectors import (
     CollectionFailed,
     CollectedPublication,
@@ -31,7 +31,10 @@ from backend.app.modules.sources.schemas import (
     SourceCollectionResult,
     SourceType,
 )
-from scripts.seed_core import content_hash
+from backend.app.modules.publications.hashing import content_hash
+from backend.app.modules.regulatory_cases.service import (
+    reconcile_publication_regulatory_cases,
+)
 
 
 @dataclass(frozen=True)
@@ -62,6 +65,11 @@ class _PreparedPublication:
     content: str
 
 
+@dataclass(frozen=True)
+class _PreparedReference:
+    row: PublicationSourceReference
+
+
 def collect_source(
     session: Session,
     source_id: str,
@@ -84,19 +92,13 @@ def collect_source(
 
 def collect_enabled_sources(
     session: Session,
-    *,
-    include_demo: bool = False,
 ) -> CollectionReport:
     started_at = datetime.now(UTC)
     with session.begin():
         rows = list(
             session.scalars(select(Source).where(Source.enabled == 1).order_by(Source.id))
         )
-        source_ids = [
-            row.id
-            for row in rows
-            if include_demo or not json.loads(row.payload_json).get("is_demo", False)
-        ]
+        source_ids = [row.id for row in rows]
 
     embedder = build_optional_embedder()
     results: list[SourceCollectionResult] = []
@@ -116,7 +118,6 @@ def _load_source(session: Session, source_id: str) -> CollectorSource | None:
             id=row.id,
             type=SourceType(row.type),
             url=row.url,
-            is_demo=bool(json.loads(row.payload_json).get("is_demo", False)),
         )
 
 
@@ -209,10 +210,14 @@ def _ingest(
     collected_at: datetime,
 ) -> tuple[CollectionStats, str | None]:
     existing = _publication_snapshots(session)
+    reference_external_keys, reference_urls = _source_reference_keys(session)
     external_keys = {(item.source_id, item.external_id) for item in existing}
+    external_keys.update(reference_external_keys)
     canonical_urls = {item.canonical_url for item in existing}
-    content_hashes = {item.content_hash for item in existing}
+    canonical_urls.update(reference_urls)
+    content_hashes = {item.content_hash: item.id for item in existing}
     prepared: list[_PreparedPublication] = []
+    prepared_references: list[_PreparedReference] = []
     already_seen = 0
     content_duplicates = 0
 
@@ -223,8 +228,25 @@ def _ingest(
         if external_key in external_keys or canonical_url in canonical_urls:
             already_seen += 1
             continue
-        if digest in content_hashes:
+        canonical_publication_id = content_hashes.get(digest)
+        if canonical_publication_id is not None:
             content_duplicates += 1
+            prepared_references.append(
+                _PreparedReference(
+                    row=PublicationSourceReference(
+                        id=f"publication-source-reference-{uuid4().hex}",
+                        publication_id=canonical_publication_id,
+                        source_id=source.id,
+                        external_id=item.external_id,
+                        title=item.title,
+                        original_url=canonical_url,
+                        published_at=_iso_datetime(item.published_at),
+                        collected_at=_iso_datetime(collected_at),
+                    )
+                )
+            )
+            external_keys.add(external_key)
+            canonical_urls.add(canonical_url)
             continue
 
         publication_id = f"publication-{uuid4().hex}"
@@ -239,7 +261,6 @@ def _ingest(
             "collected_at": _iso_datetime(collected_at),
             "content": item.content,
             "content_hash": digest,
-            "is_demo": item.is_demo,
         }
         prepared.append(
             _PreparedPublication(
@@ -262,7 +283,7 @@ def _ingest(
         )
         external_keys.add(external_key)
         canonical_urls.add(canonical_url)
-        content_hashes.add(digest)
+        content_hashes[digest] = publication_id
 
     candidates: list[DuplicateCandidate] = []
     semantic_error: str | None = None
@@ -280,7 +301,11 @@ def _ingest(
     with session.begin():
         session.add_all(item.row for item in prepared)
         session.flush()
+        session.add_all(item.row for item in prepared_references)
         session.add_all(candidates)
+
+    for item in prepared:
+        reconcile_publication_regulatory_cases(session, item.row.id)
 
     return (
         CollectionStats(
@@ -310,6 +335,17 @@ def _publication_snapshots(session: Session) -> list[_PublicationSnapshot]:
             )
             for row in rows
         ]
+
+
+def _source_reference_keys(
+    session: Session,
+) -> tuple[set[tuple[str, str]], set[str]]:
+    with session.begin():
+        rows = list(session.scalars(select(PublicationSourceReference)))
+        return (
+            {(row.source_id, row.external_id) for row in rows},
+            {_canonical_url(row.original_url) for row in rows},
+        )
 
 
 def _semantic_candidates(

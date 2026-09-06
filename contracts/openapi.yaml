@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
   title: PR/GR AI Analytics API
-  version: 0.4.0
+  version: 0.6.0
   description: >-
     API модульного MVP: публикации, AI-анализ, решения специалистов, источники,
-    синхронный сбор и жизненный цикл НПА.
+    синхронный сбор, жизненный цикл НПА и персональные Telegram-отчёты.
 servers:
   - url: http://127.0.0.1:8000
     description: Local backend
@@ -16,8 +16,9 @@ tags:
   - name: regulatory-cases
   - name: collections
   - name: deduplication
-  - name: demo
   - name: auth
+  - name: users
+  - name: telegram
 
 paths:
   /api/health:
@@ -54,6 +55,132 @@ paths:
               schema: {$ref: "#/components/schemas/Error"}
         "503":
           description: Telegram authentication is not configured
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+
+  /api/me:
+    get:
+      tags: [users]
+      operationId: getMyProfile
+      parameters:
+        - $ref: "#/components/parameters/TelegramInitData"
+      responses:
+        "200":
+          description: Current user's profile and interface preferences
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/UserProfile"}
+        "401":
+          description: Signed Telegram launch is required or invalid
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "503":
+          description: Telegram authentication is not configured
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+    patch:
+      tags: [users]
+      operationId: updateMyPreferences
+      parameters:
+        - $ref: "#/components/parameters/TelegramInitData"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UserPreferencesPatch"}
+      responses:
+        "200":
+          description: Updated current-user preferences
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/UserProfile"}
+        "401":
+          description: Invalid or expired Telegram launch data
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "503":
+          description: Telegram authentication is not configured
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+
+  /api/telegram/report-deliveries:
+    post:
+      tags: [telegram]
+      operationId: createTelegramReportDelivery
+      parameters:
+        - $ref: "#/components/parameters/TelegramInitData"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TelegramReportDeliveryRequest"}
+      responses:
+        "200":
+          description: Report delivered as one or more Telegram messages
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TelegramReportDeliveryResponse"}
+        "401":
+          description: Telegram Mini App launch is required
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "502":
+          description: Telegram rejected or could not receive the message
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "503":
+          description: Telegram bot is not configured
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+
+  /api/me/telegram-digest-settings:
+    get:
+      tags: [users, telegram]
+      operationId: getMyTelegramDigestSettings
+      parameters:
+        - $ref: "#/components/parameters/TelegramInitData"
+      responses:
+        "200":
+          description: Automatic Telegram digest settings for the current user
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TelegramDigestSettings"}
+        "401":
+          description: Signed Telegram launch is required or invalid
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+    patch:
+      tags: [users, telegram]
+      operationId: updateMyTelegramDigestSettings
+      parameters:
+        - $ref: "#/components/parameters/TelegramInitData"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TelegramDigestSettingsPatch"}
+      responses:
+        "200":
+          description: Updated automatic Telegram digest settings
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TelegramDigestSettings"}
+        "401":
+          description: Signed Telegram launch is required or invalid
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "422":
+          description: Automatic Telegram delivery requires a Telegram user
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Error"}
@@ -284,20 +411,6 @@ paths:
                   externalValue: ./examples/collection-report.json
         "404": {$ref: "#/components/responses/NotFound"}
 
-  /api/demo/seed:
-    post:
-      tags: [demo]
-      operationId: importDemoSeed
-      responses:
-        "200":
-          description: Idempotent offline import result
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/DemoSeedImportReport"}
-              examples:
-                cleanDatabase:
-                  externalValue: ./examples/demo-seed-import-report.json
-
   /api/collections:
     post:
       tags: [collections]
@@ -323,6 +436,10 @@ paths:
             allOf:
               - $ref: "#/components/schemas/DuplicateFilterStatus"
             default: unreviewed
+        - name: publication_id
+          in: query
+          description: Return pairs where this publication is either side of the match
+          schema: {type: string}
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
       responses:
@@ -444,6 +561,12 @@ paths:
 
 components:
   parameters:
+    TelegramInitData:
+      name: X-Telegram-Init-Data
+      in: header
+      required: false
+      description: Raw Telegram.WebApp.initData; absent only for local development
+      schema: {type: string, maxLength: 8192}
     PublicationId:
       name: publication_id
       in: path
@@ -504,7 +627,7 @@ components:
 
     SourceType:
       type: string
-      enum: [rss, regulator, telegram, telegram_archive, file, seed]
+      enum: [rss, regulator, telegram, file]
 
     Category:
       type: string
@@ -555,7 +678,6 @@ components:
         - last_checked_at
         - last_success_at
         - last_error
-        - is_demo
       properties:
         id: {type: string}
         name: {type: string, minLength: 1}
@@ -565,7 +687,6 @@ components:
         last_checked_at: {type: [string, "null"], format: date-time}
         last_success_at: {type: [string, "null"], format: date-time}
         last_error: {type: [string, "null"]}
-        is_demo: {type: boolean}
 
     Entity:
       type: object
@@ -654,13 +775,13 @@ components:
         - collected_at
         - content
         - content_hash
-        - is_demo
         - latest_analysis_id
         - latest_revision_id
         - tags
         - is_hidden
         - is_manual
         - updated_at
+        - source_references
       properties:
         id: {type: string}
         source_id: {type: string}
@@ -671,7 +792,6 @@ components:
         collected_at: {type: string, format: date-time}
         content: {type: string}
         content_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
-        is_demo: {type: boolean}
         latest_analysis_id: {type: [string, "null"]}
         latest_revision_id: {type: [string, "null"]}
         tags:
@@ -680,6 +800,30 @@ components:
         is_hidden: {type: boolean}
         is_manual: {type: boolean}
         updated_at: {type: string, format: date-time}
+        source_references:
+          type: array
+          minItems: 1
+          items: {$ref: "#/components/schemas/PublicationSourceReference"}
+
+    PublicationSourceReference:
+      type: object
+      additionalProperties: false
+      required:
+        - source_id
+        - external_id
+        - title
+        - original_url
+        - published_at
+        - collected_at
+        - is_primary
+      properties:
+        source_id: {type: string}
+        external_id: {type: string}
+        title: {type: string}
+        original_url: {type: string, format: uri}
+        published_at: {type: string, format: date-time}
+        collected_at: {type: string, format: date-time}
+        is_primary: {type: boolean}
 
     PublicationCreate:
       type: object
@@ -982,6 +1126,86 @@ components:
         auth_date: {type: string, format: date-time}
         query_id: {type: [string, "null"]}
 
+    TelegramReportDeliveryRequest:
+      type: object
+      additionalProperties: false
+      required: [content]
+      properties:
+        content: {type: string, minLength: 1, maxLength: 50000}
+
+    TelegramReportDeliveryResponse:
+      type: object
+      additionalProperties: false
+      required: [delivered, message_count]
+      properties:
+        delivered: {type: boolean, const: true}
+        message_count: {type: integer, minimum: 1}
+
+    UserRole:
+      type: string
+      enum: [gr, pr, manager]
+
+    ViewMode:
+      type: string
+      enum: [compact, expert]
+
+    DigestMinimumPriority:
+      type: string
+      enum: [critical, high, medium, low]
+
+    UserProfile:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - telegram_id
+        - name
+        - username
+        - role
+        - view_mode
+        - start_filters
+        - can_assign_tasks
+        - can_confirm_analysis
+        - updated_at
+      properties:
+        id: {type: string}
+        telegram_id: {type: [integer, "null"], format: int64}
+        name: {type: string}
+        username: {type: [string, "null"]}
+        role: {$ref: "#/components/schemas/UserRole"}
+        view_mode: {$ref: "#/components/schemas/ViewMode"}
+        start_filters: {type: object, additionalProperties: true}
+        can_assign_tasks: {type: boolean}
+        can_confirm_analysis: {type: boolean}
+        updated_at: {type: string, format: date-time}
+
+    UserPreferencesPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        view_mode: {$ref: "#/components/schemas/ViewMode"}
+        start_filters: {type: object, additionalProperties: true}
+
+    TelegramDigestSettings:
+      type: object
+      additionalProperties: false
+      required: [available, enabled, minimum_priority, delivery_interval_minutes, updated_at]
+      properties:
+        available: {type: boolean}
+        enabled: {type: boolean}
+        minimum_priority: {$ref: "#/components/schemas/DigestMinimumPriority"}
+        delivery_interval_minutes: {type: integer, const: 15}
+        updated_at: {type: string, format: date-time}
+
+    TelegramDigestSettingsPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        enabled: {type: boolean}
+        minimum_priority: {$ref: "#/components/schemas/DigestMinimumPriority"}
+
     RegulatoryCaseCreate:
       type: object
       additionalProperties: false
@@ -1005,6 +1229,8 @@ components:
         - registration_number
         - current_stage
         - responsible_user_id
+        - origin
+        - needs_review
         - related_publication_ids
         - created_at
         - updated_at
@@ -1014,11 +1240,21 @@ components:
         registration_number: {type: string}
         current_stage: {$ref: "#/components/schemas/LifecycleStage"}
         responsible_user_id: {type: string}
+        origin: {$ref: "#/components/schemas/RegulatoryCaseOrigin"}
+        needs_review:
+          type: boolean
+          description: >-
+            True only for an automatically discovered draft until a specialist
+            verifies its title, requisites and official lifecycle source.
         related_publication_ids:
           type: array
           items: {type: string}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+
+    RegulatoryCaseOrigin:
+      type: string
+      enum: [manual, automatic]
 
     LifecycleEventCreate:
       type: object
@@ -1074,16 +1310,6 @@ components:
         timeline:
           type: array
           items: {$ref: "#/components/schemas/LifecycleEvent"}
-
-    DemoSeedImportReport:
-      type: object
-      additionalProperties: false
-      required: [sources, publications, analyses, duplicates]
-      properties:
-        sources: {type: integer, minimum: 0}
-        publications: {type: integer, minimum: 0}
-        analyses: {type: integer, minimum: 0}
-        duplicates: {type: integer, minimum: 0}
 
     SourceCollectionResult:
       type: object

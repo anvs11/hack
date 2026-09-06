@@ -107,6 +107,16 @@ def test_unknown_criterion_does_not_turn_into_zero() -> None:
     assert result.has_unknown_criterion is True
 
 
+def test_unknown_criterion_keeps_explicit_model_priority_for_review() -> None:
+    criteria = _criteria(8).model_copy(update={"financial_impact": None})
+
+    result = score_criteria(criteria, Priority.MEDIUM)
+
+    assert result.importance_score is None
+    assert result.proposed_priority is Priority.MEDIUM
+    assert result.has_unknown_criterion is True
+
+
 def test_hard_signal_with_unknown_criterion_still_requires_high_priority_review() -> None:
     criteria = _criteria(
         8,

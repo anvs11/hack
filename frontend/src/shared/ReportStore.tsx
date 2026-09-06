@@ -18,10 +18,7 @@ import {
 
 export const dataEnvironment = import.meta.env.VITE_API_BASE_URL
   ? `api:${import.meta.env.VITE_API_BASE_URL}`
-  : import.meta.env.DEV || import.meta.env.MODE === 'test'
-    ? 'demo:msw'
-    : 'api:same-origin'
-export const isDemoMode = dataEnvironment === 'demo:msw'
+  : 'api:same-origin'
 export type ReportState = {
   draft: ReportDraft
   warning: string

@@ -34,6 +34,11 @@ export type DuplicateVerdict = components['schemas']['DuplicateVerdict']
 export type SourceType = components['schemas']['SourceType']
 export type TelegramAuthRequest = components['schemas']['TelegramAuthRequest']
 export type TelegramAuthResponse = components['schemas']['TelegramAuthResponse']
+export type TelegramReportDeliveryResponse = components['schemas']['TelegramReportDeliveryResponse']
+export type UserProfile = components['schemas']['UserProfile']
+export type UserPreferencesPatch = components['schemas']['UserPreferencesPatch']
+export type TelegramDigestSettings = components['schemas']['TelegramDigestSettings']
+export type TelegramDigestSettingsPatch = components['schemas']['TelegramDigestSettingsPatch']
 export type PublicationQuery = NonNullable<
   operations['listPublications']['parameters']['query']
 >

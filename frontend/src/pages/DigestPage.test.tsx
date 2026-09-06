@@ -72,6 +72,38 @@ afterEach(() => {
 })
 
 describe('DigestPage', () => {
+  it('updates personal automatic Telegram report settings', async () => {
+    const patches: unknown[] = []
+    server.use(
+      http.get('*/api/me/telegram-digest-settings', () => HttpResponse.json({
+        available: true,
+        enabled: true,
+        minimum_priority: 'high',
+        delivery_interval_minutes: 15,
+        updated_at: '2026-09-06T10:00:00Z',
+      })),
+      http.patch('*/api/me/telegram-digest-settings', async ({ request }) => {
+        const patch = await request.json()
+        patches.push(patch)
+        return HttpResponse.json({
+          available: true,
+          enabled: false,
+          minimum_priority: 'high',
+          delivery_interval_minutes: 15,
+          updated_at: '2026-09-06T10:01:00Z',
+        })
+      }),
+    )
+    renderDigest()
+
+    const toggle = await screen.findByRole('checkbox', { name: 'Получать автоматически' })
+    expect(toggle).toBeChecked()
+    fireEvent.click(toggle)
+
+    await waitFor(() => expect(patches).toEqual([{ enabled: false }]))
+    expect(await screen.findByText('Настройки сохранены.')).toBeInTheDocument()
+  })
+
   it('shows a loading state and disables both exports during loading', () => {
     server.use(
       http.get('*/api/publications', async () => {
@@ -92,13 +124,13 @@ describe('DigestPage', () => {
     renderDigest()
 
     expect(await screen.findByRole('heading', { name: 'Подтверждённые критические материалы' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Изменения стадий НПА' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Изменения нормативных документов' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Требующие проверки карточки' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Действия пользователей' })).toBeInTheDocument()
 
     const counters = screen.getByRole('group', { name: 'Сводные счётчики' })
     expect(within(counters).getByText('Критические').nextElementSibling).toHaveTextContent('1')
-    expect(within(counters).getByText('Стадии НПА').nextElementSibling).toHaveTextContent('1')
+    expect(within(counters).getByText('Изменения документов').nextElementSibling).toHaveTextContent('1')
     expect(within(counters).getByText('На проверке').nextElementSibling).toHaveTextContent('2')
     expect(within(counters).getByText('Действия').nextElementSibling).toHaveTextContent('3')
     expect(screen.getByText('Критический материал подтверждён специалистом.')).toBeInTheDocument()
@@ -115,7 +147,7 @@ describe('DigestPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Дайджест пуст' })).toBeInTheDocument()
     expect(screen.getByText('Нет подтверждённых актуальных решений с критическим приоритетом.')).toBeInTheDocument()
-    expect(screen.getByText('Нет официально подтверждённых событий в timeline кейсов НПА.')).toBeInTheDocument()
+    expect(screen.getByText('Нет официально подтверждённых изменений нормативных актов.')).toBeInTheDocument()
     expect(screen.getByText('Нет новых версий AI-анализа, ожидающих решения специалиста.')).toBeInTheDocument()
     expect(screen.getByText('Нет сохранённых решений специалистов и lifecycle events.')).toBeInTheDocument()
   })
@@ -138,7 +170,7 @@ describe('DigestPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
 
-    expect(await screen.findByText('all_available_data')).toBeInTheDocument()
+    expect(await screen.findByText('Сформирован')).toBeInTheDocument()
     expect(requests).toBe(2)
     expect(screen.getByRole('button', { name: 'Скачать JSON' })).toBeEnabled()
   })
@@ -152,7 +184,7 @@ describe('DigestPage', () => {
       }),
     )
     renderDigest()
-    await screen.findByText('all_available_data')
+    await screen.findByText('Сформирован')
     expect(requests).toBe(1)
 
     fireEvent.click(screen.getByRole('button', { name: 'Обновить' }))
@@ -206,7 +238,7 @@ describe('DigestPage', () => {
       return element
     }) as typeof document.createElement)
     renderDigest()
-    await screen.findByText('all_available_data')
+    await screen.findByText('Сформирован')
 
     fireEvent.click(screen.getByRole('button', { name: 'Скачать JSON' }))
     fireEvent.click(screen.getByRole('button', { name: 'Скачать Markdown' }))
@@ -245,7 +277,7 @@ describe('DigestPage', () => {
     )
     renderDigest()
 
-    await screen.findByText('all_available_data')
+    await screen.findByText('Сформирован')
     expect(digestRequests).toBe(0)
   })
 })

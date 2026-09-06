@@ -1,0 +1,95 @@
+{
+  "measurement": {
+    "kind": "plumbing_smoke",
+    "quality_claim_allowed": false,
+    "reason": "No independent human labels were used.",
+    "created_at": "2026-09-06T11:27:31.787588+00:00",
+    "provider": "openai_compatible",
+    "model": "qwen/qwen3.8-flash",
+    "limit": 5,
+    "timeout_seconds": 120,
+    "max_input_chars": 12000,
+    "max_new_tokens": 1024
+  },
+  "aggregate": {
+    "attempted": 5,
+    "successful": 3,
+    "timed_out": 0,
+    "failed": 2,
+    "mean_latency_seconds": 7.433,
+    "median_latency_seconds": 6.244,
+    "p95_latency_seconds": 11.408,
+    "max_latency_seconds": 11.408,
+    "within_15_seconds_count": 3,
+    "mean_compression_ratio": 0.5455,
+    "summaries_with_3_to_5_sentences": 3,
+    "all_evidence_grounded": true
+  },
+  "rows": [
+    {
+      "publication_id": "publication-26978153d5ee4095afbb6abe8144cc7c",
+      "input_hash": "sha256:389c341cd4ac942c7f1fd33d55b42d296bb9fd31894f5b60cdabc32eb3da3a53",
+      "input_chars": 255,
+      "status": "success",
+      "latency_seconds": 4.647,
+      "summary_chars": 277,
+      "compression_ratio": 1.0863,
+      "summary_sentences": 3,
+      "evidence_quotes": 2,
+      "grounded_quotes": 2,
+      "error": null
+    },
+    {
+      "publication_id": "publication-526a8c66461148dbbf5b7b6a4afa8114",
+      "input_hash": "sha256:1df2f18741558b8565cf7f11a4ba7de5048edf4ed8b282c9f13aac9ecce88529",
+      "input_chars": 1366,
+      "status": "success",
+      "latency_seconds": 11.408,
+      "summary_chars": 367,
+      "compression_ratio": 0.2687,
+      "summary_sentences": 4,
+      "evidence_quotes": 3,
+      "grounded_quotes": 3,
+      "error": null
+    },
+    {
+      "publication_id": "publication-c2cea7c1851346689506d365d873bada",
+      "input_hash": "sha256:8d8616f32814b609b75ec53246a7d530226ebdae42ac3a914a727c5308ca28a5",
+      "input_chars": 1176,
+      "status": "error",
+      "latency_seconds": 30.474,
+      "summary_chars": null,
+      "compression_ratio": null,
+      "summary_sentences": null,
+      "evidence_quotes": null,
+      "grounded_quotes": null,
+      "error": "AnalyzerUnavailable: OpenAI-compatible LLM request failed with HTTP 500"
+    },
+    {
+      "publication_id": "publication-f858a874574648dfaca9e826d77f64bc",
+      "input_hash": "sha256:b62a5f9fe32df7c304e144fdd7dfcd8dd865d001c733a88c552e40cdcbaca987",
+      "input_chars": 1343,
+      "status": "success",
+      "latency_seconds": 6.244,
+      "summary_chars": 378,
+      "compression_ratio": 0.2815,
+      "summary_sentences": 3,
+      "evidence_quotes": 2,
+      "grounded_quotes": 2,
+      "error": null
+    },
+    {
+      "publication_id": "publication-2b464d58f07f4865a190f5ad965268c0",
+      "input_hash": "sha256:67ff012cc6551a7caec8b8227e4ecbcdf275e7c4a37cd25858a044c37b1f80e5",
+      "input_chars": 1492,
+      "status": "error",
+      "latency_seconds": 30.1,
+      "summary_chars": null,
+      "compression_ratio": null,
+      "summary_sentences": null,
+      "evidence_quotes": null,
+      "grounded_quotes": null,
+      "error": "AnalyzerUnavailable: OpenAI-compatible LLM request failed with HTTP 500"
+    }
+  ]
+}

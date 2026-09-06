@@ -58,7 +58,7 @@ beforeEach(() => {
 
 describe('Telegram adapter', () => {
   it('uses the verified Telegram id for audited write actions', () => {
-    expect(getCurrentActorId()).toBe('user-gr-001')
+    expect(getCurrentActorId()).toBe('local:gr')
 
     document.documentElement.dataset.telegramUserId = '42'
 

@@ -30,3 +30,16 @@ class TelegramAuthResponse(BaseModel):
     user: TelegramUser
     auth_date: datetime
     query_id: str | None = None
+
+
+class TelegramReportDeliveryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content: str = Field(min_length=1, max_length=50_000)
+
+
+class TelegramReportDeliveryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    delivered: Literal[True] = True
+    message_count: int = Field(ge=1)

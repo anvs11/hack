@@ -1,6 +1,8 @@
 import json
 import sys
 from collections.abc import Generator
+from io import BytesIO
+from urllib.error import HTTPError
 from pathlib import Path
 
 import pytest
@@ -21,13 +23,14 @@ from backend.app.modules.analysis.analyzers import (
 from backend.app.modules.analysis.models import AnalysisVersion
 from backend.app.modules.publications.models import Publication
 from backend.app.modules.publications.schemas import Analyzer
+from backend.tests.seed import seed_test_database
 
 
 @pytest.fixture
 def client_with_seed(tmp_path: Path) -> Generator[tuple[TestClient, Engine], None, None]:
     engine = build_engine(f"sqlite:///{tmp_path / 'analysis.sqlite3'}")
+    seed_test_database(engine)
     with TestClient(create_app(database_engine=engine)) as client:
-        assert client.post("/api/demo/seed").status_code == 200
         yield client, engine
     engine.dispose()
 
@@ -47,6 +50,7 @@ def _live_output(quote: str = "тест") -> dict:
         "facts": ["Проверяемый факт"],
         "entities": [{"type": "topic", "value": "тест"}],
         "category": "trend",
+        "proposed_priority": "medium",
         "criteria": {
             "business_relevance": 0,
             "event_maturity": 0,
@@ -200,7 +204,6 @@ def test_valid_live_draft_is_saved_with_deterministic_score(
                 model="Qwen/Qwen3.5-0.8B",
                 prompt_version="analysis-v1",
                 **_live_output(quote="уведомление"),
-                proposed_priority="unknown",
                 importance_score=0,
                 needs_review=True,
             )
@@ -232,7 +235,6 @@ def test_ungrounded_evidence_is_rejected_without_writing(
                 model="test-model",
                 prompt_version="analysis-v1",
                 **_live_output(quote="цитата отсутствует в исходном тексте"),
-                proposed_priority="unknown",
                 importance_score=0,
                 needs_review=True,
             )
@@ -272,8 +274,8 @@ def test_live_adapter_parses_json_and_does_not_delegate_scoring() -> None:
 
     assert calls == 1
     assert draft.summary == "Первый вывод. Второй вывод. Третий вывод."
-    assert draft.prompt_version == "analysis-v3"
-    assert draft.proposed_priority.value == "unknown"
+    assert draft.prompt_version == "analysis-v4"
+    assert draft.proposed_priority.value == "medium"
     assert draft.importance_score is None
     assert draft.needs_review is True
 
@@ -476,3 +478,33 @@ def test_openai_compatible_adapter_can_disable_reasoning(
     )
 
     assert captured["reasoning"] == {"effort": "none"}
+
+
+def test_openai_compatible_adapter_reports_http_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_urlopen(_request, timeout):
+        del timeout
+        raise HTTPError(
+            "https://llm.example/v1/chat/completions",
+            429,
+            "Too Many Requests",
+            {},
+            BytesIO(b"rate limited"),
+        )
+
+    monkeypatch.setattr(analyzers, "urlopen", fake_urlopen)
+    generator = OpenAICompatibleGenerator(
+        base_url="https://llm.example/v1",
+        api_key="secret-for-test",
+        model_id="qwen/qwen3.8-flash",
+        timeout=17,
+    )
+
+    with pytest.raises(AnalyzerUnavailable, match="HTTP 429"):
+        generator(
+            text=[{"role": "user", "content": [{"type": "text", "text": "JSON"}]}],
+            max_new_tokens=123,
+            do_sample=False,
+            return_full_text=False,
+        )

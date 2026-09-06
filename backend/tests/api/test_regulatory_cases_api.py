@@ -15,13 +15,14 @@ from backend.app.modules.regulatory_cases.models import (
     RegulatoryCase,
     RegulatoryCasePublication,
 )
+from backend.tests.seed import seed_test_database
 
 
 @pytest.fixture
 def client_with_seed(tmp_path: Path) -> Generator[tuple[TestClient, Engine], None, None]:
     engine = build_engine(f"sqlite:///{tmp_path / 'cases.sqlite3'}")
+    seed_test_database(engine)
     with TestClient(create_app(database_engine=engine)) as client:
-        assert client.post("/api/demo/seed").status_code == 200
         yield client, engine
     engine.dispose()
 
@@ -461,8 +462,8 @@ def test_repeated_seed_keeps_one_case_and_does_not_remove_existing_link(
         ),
     ).json()
 
-    assert client.post("/api/demo/seed").status_code == 200
-    assert client.post("/api/demo/seed").status_code == 200
+    seed_test_database(engine)
+    seed_test_database(engine)
 
     with Session(engine) as session:
         assert session.scalar(select(func.count()).select_from(RegulatoryCase)) == 1

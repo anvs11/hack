@@ -1,18 +1,28 @@
 {
-  "id": "pub-001",
-  "source_id": "source-regulation",
-  "external_id": "demo-reg-001",
-  "title": "Проект требований к обработке данных вынесен на обсуждение",
-  "original_url": "https://example.org/regulation/demo-reg-001",
-  "published_at": "2026-09-01T07:30:00Z",
-  "collected_at": "2026-09-01T07:35:00Z",
-  "content": "Демонстрационный материал: регулятор опубликовал проект требований и установил срок общественного обсуждения.",
-  "content_hash": "sha256:96f1261f1bebf3d64e379a0e23bf774da16a08de83056aefeda661c8ed367c45",
-  "is_demo": true,
-  "latest_analysis_id": "analysis-001",
+  "id": "publication-ai-law-243",
+  "source_id": "source-parliamentary-laws",
+  "external_id": "243-fz-2026",
+  "title": "Федеральный закон о поддержке развития технологий искусственного интеллекта",
+  "original_url": "https://www.pnp.ru/law/2026/07/26/federalnyy-zakon-243-fz.html",
+  "published_at": "2026-07-26T00:00:00Z",
+  "collected_at": "2026-09-06T10:00:00Z",
+  "content": "Федеральный закон № 243-ФЗ от 26 июля 2026 года устанавливает правовые условия и меры поддержки развития технологий искусственного интеллекта в Российской Федерации. Основные положения вступили в силу 1 сентября 2026 года.",
+  "content_hash": "sha256:b632d45946549c1fa13bb4c12f22daae74817399ade9ebcdb22ed6d6789cd576",
+  "latest_analysis_id": "analysis-ai-law-243",
   "latest_revision_id": null,
   "tags": [],
   "is_hidden": false,
   "is_manual": false,
-  "updated_at": "2026-09-01T07:35:00Z"
+  "updated_at": "2026-09-06T10:00:00Z",
+  "source_references": [
+    {
+      "source_id": "source-parliamentary-laws",
+      "external_id": "243-fz-2026",
+      "title": "Федеральный закон о поддержке развития технологий искусственного интеллекта",
+      "original_url": "https://www.pnp.ru/law/2026/07/26/federalnyy-zakon-243-fz.html",
+      "published_at": "2026-07-26T00:00:00Z",
+      "collected_at": "2026-09-06T10:00:00Z",
+      "is_primary": true
+    }
+  ]
 }

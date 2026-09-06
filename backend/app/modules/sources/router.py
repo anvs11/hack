@@ -2,8 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import Engine
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from backend.app.db import get_session
@@ -13,12 +12,10 @@ from backend.app.modules.sources.collection_service import (
 )
 from backend.app.modules.sources.schemas import (
     CollectionReport,
-    DemoSeedImportReport,
     SourceCreate,
     SourcePatch,
     SourceResponse,
 )
-from backend.app.modules.sources.seed_service import import_demo_seed
 from backend.app.modules.sources.service import (
     create_source as create_source_record,
     list_sources as read_sources,
@@ -91,19 +88,3 @@ def collect_all_sources(
     session: Annotated[Session, Depends(get_session)],
 ) -> CollectionReport:
     return collect_enabled_sources(session)
-
-
-@router.post(
-    "/api/demo/seed",
-    operation_id="importDemoSeed",
-    response_model=DemoSeedImportReport,
-)
-def import_demo_data(request: Request) -> DemoSeedImportReport:
-    engine: Engine = request.app.state.database_engine
-    result = import_demo_seed(engine)
-    return DemoSeedImportReport(
-        sources=result.sources,
-        publications=result.publications,
-        analyses=result.analyses,
-        duplicates=result.duplicates,
-    )

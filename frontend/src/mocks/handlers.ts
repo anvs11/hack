@@ -22,6 +22,8 @@ import type {
   SpecialistDecision,
   SpecialistDecisionCreate,
   SourceType,
+  UserProfile,
+  TelegramDigestSettings,
 } from '../shared/api/types'
 import { sortPublications } from '../shared/publications'
 import {
@@ -49,6 +51,25 @@ let nextSourceId = 1
 let collectionRun = 0
 let nextPublicationId = 1
 let duplicateCandidates: DuplicateCandidate[] = []
+let mockProfile: UserProfile = {
+  id: 'user-gr-001',
+  telegram_id: null,
+  name: 'GR-специалист',
+  username: null,
+  role: 'gr',
+  view_mode: 'expert',
+  start_filters: {},
+  can_assign_tasks: true,
+  can_confirm_analysis: true,
+  updated_at: '2026-09-06T08:00:00Z',
+}
+let mockTelegramDigestSettings: TelegramDigestSettings = {
+  available: false,
+  enabled: false,
+  minimum_priority: 'high',
+  delivery_interval_minutes: 15,
+  updated_at: '2026-09-06T08:00:00Z',
+}
 
 const allowedTransitions: Record<LifecycleStage, LifecycleStage[]> = {
   draft: ['introduced'],
@@ -78,6 +99,12 @@ export function resetMockState() {
   collectionRun = 0
   nextPublicationId = 1
   duplicateCandidates = [mockDuplicateCandidate()]
+  mockProfile = { ...mockProfile, view_mode: 'expert' }
+  mockTelegramDigestSettings = {
+    ...mockTelegramDigestSettings,
+    enabled: false,
+    minimum_priority: 'high',
+  }
 }
 
 function mockDuplicateCandidate(): DuplicateCandidate {
@@ -105,12 +132,49 @@ const notFound = (resource: string) =>
   )
 
 export const handlers = [
+  http.get('*/api/me', () => HttpResponse.json(mockProfile)),
+
+  http.patch('*/api/me', async ({ request }) => {
+    const patch = await request.json() as {
+      view_mode?: 'compact' | 'expert'
+      start_filters?: Record<string, unknown>
+    }
+    mockProfile = {
+      ...mockProfile,
+      ...patch,
+      updated_at: new Date().toISOString(),
+    }
+    return HttpResponse.json(mockProfile)
+  }),
+
+  http.get('*/api/me/telegram-digest-settings', () =>
+    HttpResponse.json(mockTelegramDigestSettings)),
+
+  http.patch('*/api/me/telegram-digest-settings', async ({ request }) => {
+    const patch = await request.json() as Partial<TelegramDigestSettings>
+    mockTelegramDigestSettings = {
+      ...mockTelegramDigestSettings,
+      ...patch,
+      updated_at: new Date().toISOString(),
+    }
+    return HttpResponse.json(mockTelegramDigestSettings)
+  }),
+
+  http.post('*/api/telegram/report-deliveries', () =>
+    HttpResponse.json({ delivered: true, message_count: 1 })),
+
   http.get('*/api/duplicate-candidates', ({ request }) => {
     const params = new URL(request.url).searchParams
     const status = params.get('status')
-    const matching = status && status !== 'all'
+    const publicationId = params.get('publication_id')
+    const statusMatching = status && status !== 'all'
       ? duplicateCandidates.filter((candidate) => candidate.status === status)
       : duplicateCandidates
+    const matching = publicationId
+      ? statusMatching.filter((candidate) =>
+        candidate.publication.publication.id === publicationId ||
+        candidate.candidate_publication.publication.id === publicationId)
+      : statusMatching
     const limit = Number(params.get('limit') ?? 20)
     const offset = Number(params.get('offset') ?? 0)
     const items = matching.slice(offset, offset + limit)
@@ -307,13 +371,23 @@ export const handlers = [
         collected_at: now,
         content: body.content,
         content_hash: `sha256:${'a'.repeat(64)}`,
-        is_demo: false,
         latest_analysis_id: null,
         latest_revision_id: `revision-manual-${nextPublicationId}`,
         tags: body.tags ?? [],
         is_hidden: false,
         is_manual: true,
         updated_at: now,
+        source_references: [
+          {
+            source_id: body.source_id,
+            external_id: id,
+            title: body.title,
+            original_url: body.original_url,
+            published_at: body.published_at,
+            collected_at: now,
+            is_primary: true,
+          },
+        ],
       },
       latest_analysis: null,
       latest_decision: null,
@@ -467,7 +541,6 @@ export const handlers = [
       last_checked_at: null,
       last_success_at: null,
       last_error: null,
-      is_demo: false,
     } satisfies Source
     nextSourceId += 1
     mutableSources = [...mutableSources, source]

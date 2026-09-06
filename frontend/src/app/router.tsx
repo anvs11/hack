@@ -6,7 +6,6 @@ import {
 } from 'react-router-dom'
 import { ReportPage } from '../pages/ReportPage'
 import { RegulatoryCasesPage } from '../pages/RegulatoryCasesPage'
-import { DuplicatesPage } from '../pages/DuplicatesPage'
 import { FeedPage } from '../pages/FeedPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
 import { PublicationPage } from '../pages/PublicationPage'
@@ -21,7 +20,7 @@ export const routes = [
     children: [
       { index: true, element: <Navigate to="/feed" replace /> },
       { path: 'feed', element: <FeedPage /> },
-      { path: 'duplicates', element: <DuplicatesPage /> },
+      { path: 'duplicates', element: <Navigate to="/feed" replace /> },
       { path: 'publications/:id', element: <PublicationPage /> },
       { path: 'regulatory-cases', element: <RegulatoryCasesPage /> },
       { path: 'regulatory-cases/:id', element: <RegulatoryCasePage /> },

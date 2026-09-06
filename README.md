@@ -5,22 +5,24 @@ MVP собирает публикации из СМИ, регуляторных 
 финального решения. НПА ведутся отдельными карточками с append-only lifecycle
 и фиксированной матрицей допустимых переходов.
 
-## Зафиксированный контракт v0.4.0
+## Зафиксированный контракт v0.6.0
 
 В текущем срезе зафиксированы:
 
 1. структура репозитория;
 2. модели API в `contracts/openapi.yaml`;
 3. эталонные JSON в `contracts/examples/`;
-4. offline seed: 5 источников, 10 публикаций, 10 replay-анализов
-   и 1 демонстрационный кейс НПА;
+4. каталог из 13 настоящих сетевых источников; синтетические записи используются
+   только в изолированных автотестах;
 5. синхронный live-сбор 13 источников с раздельным отчётом о повторно
    увиденных ID/URL и совпадениях текста;
-6. semantic duplicate candidates и append-only решения человека;
+6. одна карточка события с несколькими ссылками на подтверждающие источники;
 7. ручное создание, исправление metadata и soft-hide публикаций;
-8. Telegram Mini App initData authentication;
+8. Telegram Mini App initData authentication, профиль пользователя и отправка
+   отчёта прямо в чат с ботом;
 9. replay, локальный Hugging Face и OpenAI-compatible LLM adapters;
-10. канонические команды запуска backend, frontend и CPU VPS.
+10. периодический сбор раз в 15 минут и автоматический AI-анализ новых материалов;
+11. канонические команды запуска backend, frontend и CPU VPS.
 
 Правила изменения контракта описаны в `rules.md`, инструкции агентам — в
 `AGENTS.md`, продуктовый контекст — в `CONTEXT_PACK.md`. Эти файлы нужно читать
@@ -55,7 +57,6 @@ MVP собирает публикации из СМИ, регуляторных 
 │   └── eval/
 ├── deploy/
 ├── scripts/
-│   ├── seed_demo.py
 │   ├── sync_live_sources.py
 │   ├── run_collection_worker.py
 │   ├── evaluate_analysis.py
@@ -65,6 +66,7 @@ MVP собирает публикации из СМИ, регуляторных 
     ├── BACKEND_TODO.md
     ├── FRONTEND_API_CHANGES.md
     ├── FULL_ARCHITECTURE.md
+    ├── METRICS_VALIDATION.md
     ├── PRE_RELEASE_CHECKLIST.md
     ├── SOURCE_INVENTORY.md
     └── DEPLOYMENT.md
@@ -73,20 +75,23 @@ MVP собирает публикации из СМИ, регуляторных 
 Новые верхнеуровневые каталоги добавляются только через процедуру изменения
 protected context из `rules.md`.
 
-## HTTP API v0.4.0
+## HTTP API v0.6.0
 
 Реализованы:
 
 - `GET /api/health`;
 - `GET /api/sources`, `POST /api/sources`, `PATCH /api/sources/{source_id}`;
 - `POST /api/sources/{source_id}/collections`, `POST /api/collections`;
-- `POST /api/demo/seed`;
 - `GET /api/publications`, `POST /api/publications`;
 - `GET /api/publications/{publication_id}`, `PATCH /api/publications/{publication_id}`;
 - `POST /api/publications/{publication_id}/analyses`.
 - `GET /api/duplicate-candidates`;
 - `POST /api/duplicate-candidates/{candidate_id}/reviews`;
-- `POST /api/auth/telegram`.
+- `POST /api/auth/telegram`;
+- `GET /api/me`, `PATCH /api/me`;
+- `GET /api/me/telegram-digest-settings`,
+  `PATCH /api/me/telegram-digest-settings`;
+- `POST /api/telegram/report-deliveries`.
 
 Для карточки публикации также реализованы создание append-only решений,
 история анализов/решений, чтение и создание кейсов НПА, идемпотентная привязка
@@ -95,20 +100,12 @@ Timeline загружается из БД; lifecycle events и решения с
 Канонические имена и JSON-форматы описаны только в `contracts/openapi.yaml`.
 
 Frontend позволяет вручную добавить публикацию, исправить title/tags, скрыть или
-вернуть карточку, запустить новую версию AI-анализа и разобрать очередь похожих пар.
+вернуть карточку, запустить новую версию AI-анализа, выбрать личный режим
+`compact | expert`, сохранить стартовые фильтры, отправить отчёт в Telegram и
+включить персональную доставку новых AI-событий. Подтверждённые дубли не занимают отдельные карточки: их ссылки видны в
+детали канонической публикации.
 
 ## Канонические команды
-
-### Локальный seed
-
-Не требует сторонних зависимостей:
-
-```bash
-python3 scripts/seed_demo.py
-```
-
-По умолчанию создаётся `.local/demo.sqlite3`. Повторный запуск обновляет те же
-записи и не создаёт дубли. Другой путь: `python3 scripts/seed_demo.py --db /tmp/demo.sqlite3`.
 
 ### Backend
 
@@ -147,7 +144,9 @@ UI: `http://127.0.0.1:5173`.
 
 Первый скрипт идемпотентно синхронизирует `data/live/sources.json`, второй опрашивает
 13 включённых RSS/Telegram источников. Периодический режим по умолчанию запускается
-раз в 30 минут без `--once`.
+раз в 15 минут без `--once`, а после каждого прохода анализирует ограниченную пачку
+новых полнотекстовых публикаций без версии AI и отправляет подписанным Telegram-
+пользователям только ещё не доставленные релевантные анализы.
 
 В `CollectionReport` поле `collected` означает число записей, возвращённых
 источниками в текущем опросе, а не число новых публикаций. `already_seen` считает
@@ -176,6 +175,9 @@ VPS рекомендуется `HACK_LLM_PROVIDER=openai_compatible` вмест�
 рассуждение у CloudCompute Qwen и оставляет токены для структурированного ответа.
 В Docker Compose ключи передаются через файлы `deploy/secrets/llm_api_key` и
 `deploy/secrets/telegram_bot_token`, а не через `deploy/.env`.
+В public Compose `HACK_ALLOW_LOCAL_IDENTITY=0`: профиль и подтверждение анализа
+доступны только с подписанным Telegram `initData`. Для локальной разработки можно
+включить техническую identity через `HACK_ALLOW_LOCAL_IDENTITY=1`.
 
 Semantic backfill сохраняет embeddings пакетами в SQLite и при повторном запуске
 считает только отсутствующие или устаревшие по `content_hash` векторы:
@@ -191,6 +193,8 @@ Docker Compose и безопасная процедура остановки о�
 локальной команды и требует отдельного подтверждения цены в панели провайдера.
 Актуальные P0/P1-риски и ручной сценарий собраны в
 [`docs/PRE_RELEASE_CHECKLIST.md`](docs/PRE_RELEASE_CHECKLIST.md).
+Ориентиры заказчика, точные формулы и команды замеров собраны в
+[`docs/METRICS_VALIDATION.md`](docs/METRICS_VALIDATION.md).
 
 ## Полная локальная проверка
 
@@ -203,6 +207,7 @@ ruby -e "require 'yaml'; YAML.load_file('contracts/openapi.yaml')"
 .venv/bin/python -m pytest backend/tests -q
 .venv/bin/python scripts/evaluate_analysis.py
 .venv/bin/python scripts/evaluate_dedup.py
+.venv/bin/python scripts/measure_runtime_metrics.py
 npm --prefix frontend run generate:api
 npm --prefix frontend run typecheck
 npm --prefix frontend run lint
@@ -210,9 +215,9 @@ npm --prefix frontend run test -- --run
 npm --prefix frontend run build
 ```
 
-Для отдельной проверки seed используйте временный файл, например
-`python3 scripts/seed_demo.py --db /tmp/hack-demo.sqlite3`. SQLite из `/tmp` или
-`.local/` не добавляется в Git.
+Синтетическая база для автотестов создаётся только во временном каталоге командой
+`python3 tests/seed_test_data.py --db /tmp/hack-test.sqlite3`. Она не используется
+при обычном запуске приложения или серверном deploy.
 
 Live LLM smoke запускается отдельно, потому что требует весов или внешнего API:
 `.venv/bin/python scripts/evaluate_live_analysis.py`. Все eval-артефакты явно

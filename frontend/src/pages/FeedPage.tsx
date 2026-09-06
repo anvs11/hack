@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { api } from '../shared/api/client'
 import { useApiResource } from '../shared/api/useApiResource'
-import { formatCategory, formatDate, formatPriority } from '../shared/format'
+import { formatCategory, formatDate, formatPriority, formatSourceName } from '../shared/format'
 import { PageState } from '../shared/PageState'
 import { ManualPublicationDialog } from '../shared/ManualPublicationDialog'
 import { ReportButton, useReport } from '../shared/ReportStore'
@@ -22,6 +22,7 @@ import { SignalMap } from '../shared/SignalMap'
 
 // Position belongs to the exact result URL; it never changes the server order.
 const positions = new Map<string, number>()
+const feedRefreshIntervalMs = 15 * 60 * 1000
 export function FeedPage() {
   const [params, setParams] = useSearchParams()
   const location = useLocation()
@@ -30,6 +31,14 @@ export function FeedPage() {
   const [actionStatus, setActionStatus] = useState('')
   const [selection, setSelection] = useState<Set<string>>(new Set())
   const [highlighted, setHighlighted] = useState<string | null>(null)
+  const startupFiltersChecked = useRef(false)
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => setRefreshVersion((version) => version + 1),
+      feedRefreshIntervalMs,
+    )
+    return () => window.clearInterval(timer)
+  }, [])
   const query = useMemo(() => parseFeedQuery(params), [params])
   const invalidDates = dateError(query)
   const load = useCallback(
@@ -58,6 +67,23 @@ export function FeedPage() {
   const offset = query.offset ?? 0
   const returnTo = `/feed${location.search}`
   const restored = useRef('')
+  useEffect(() => {
+    if (startupFiltersChecked.current) return
+    startupFiltersChecked.current = true
+    if (location.search) return
+    const controller = new AbortController()
+    api.getMyProfile(controller.signal).then((profile) => {
+      const saved = new URLSearchParams()
+      Object.entries(profile.start_filters).forEach(([key, value]) => {
+        if (key in filterLabels && value !== undefined && value !== '')
+          saved.set(key, String(value))
+      })
+      if ([...saved].length) setParams(saved, { replace: true })
+    }).catch(() => {
+      // The unfiltered feed remains usable if preferences are unavailable.
+    })
+    return () => controller.abort()
+  }, [location.search, setParams])
   useEffect(() => {
     restored.current = ''
     const save = () => {
@@ -245,6 +271,35 @@ export function FeedPage() {
           >
             Сбросить
           </button>
+          <button
+            className="text-button"
+            type="button"
+            onClick={() => {
+              const startFilters = Object.fromEntries(
+                Object.entries(query).filter(
+                  ([key, value]) =>
+                    key in filterLabels && value !== undefined,
+                ),
+              )
+              void api.updateMyPreferences({
+                start_filters: startFilters,
+              }).then(() => {
+                setActionStatus(
+                  active.length
+                    ? 'Текущие фильтры сохранены как стартовые.'
+                    : 'Стартовые фильтры очищены.',
+                )
+              }).catch((error) => {
+                setActionStatus(
+                  error instanceof Error
+                    ? `Не удалось сохранить фильтры: ${error.message}`
+                    : 'Не удалось сохранить стартовые фильтры.',
+                )
+              })
+            }}
+          >
+            {active.length ? 'Сделать стартовыми' : 'Без стартовых фильтров'}
+          </button>
         </div>
         <details
           className="advanced-filters"
@@ -267,7 +322,7 @@ export function FeedPage() {
                 <option value="">Все источники</option>
                 {sources.data?.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name}
+                    {formatSourceName(s.name)}
                   </option>
                 ))}
                 {query.source_id && !sourceMap.has(query.source_id) && (
@@ -339,7 +394,7 @@ export function FeedPage() {
                   : key === 'proposed_priority'
                     ? formatPriority(query.proposed_priority!)
                     : key === 'source_id'
-                      ? (sourceMap.get(String(value))?.name ?? value)
+                          ? formatSourceName(sourceMap.get(String(value))?.name ?? String(value))
                       : key.startsWith('published_')
                         ? localDay(String(value))
                         : key === 'needs_review'
@@ -390,7 +445,7 @@ export function FeedPage() {
                     ? 'Загружаем публикации'
                     : `Найдено: ${total}`}
                 </strong>
-                <span className="sort-note">Приоритет AI → дата</span>
+                <span className="sort-note">Сначала новые</span>
               </div>
               <span className="muted">Активно: {active.length}</span>
             </div>
@@ -501,13 +556,13 @@ export function FeedPage() {
                       <div className="card-top">
                         <div className="card-meta">
                           <span className="source-avatar" aria-hidden="true">
-                            {(source?.name ?? p.source_id).charAt(0)}
+                            {formatSourceName(source?.name ?? p.source_id).charAt(0)}
                           </span>
                           <span
                             className="card-source-name"
                             title={source?.name ?? p.source_id}
                           >
-                            {source?.name ?? p.source_id}
+                            {formatSourceName(source?.name ?? p.source_id)}
                           </span>
                           <span>{sourceTypeLabel(source?.type)}</span>
                           <time dateTime={p.published_at}>
@@ -538,25 +593,20 @@ export function FeedPage() {
                           `${p.content.slice(0, 320)}${p.content.length > 320 ? '…' : ''}`}
                       </p>
                       <div className="tag-row">
-                        <span
-                          className={`tag category-${a?.category ?? 'unknown'}`}
-                        >
-                          Категория · {formatCategory(a?.category ?? 'unknown')}
-                        </span>
-                        <span
-                          className={`priority priority-${a?.proposed_priority ?? 'unknown'}`}
-                        >
-                          AI-приоритет ·{' '}
-                          {formatPriority(a?.proposed_priority ?? 'unknown')}
-                        </span>
-                        <span className="score">
-                          Важность:{' '}
-                          <strong>
-                            {a?.importance_score == null
-                              ? 'Нет данных'
-                              : `${a.importance_score} / 18`}
-                          </strong>
-                        </span>
+                        {a ? (
+                          <>
+                            <span className={`tag category-${a.category}`}>
+                              Категория · {formatCategory(a.category)}
+                            </span>
+                            <span className={`priority priority-${a.proposed_priority}`}>
+                              AI-приоритет · {formatPriority(a.proposed_priority)}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="tag category-unknown">
+                            AI-анализ в очереди
+                          </span>
+                        )}
                       </div>
                       {p.tags.length > 0 && (
                         <div className="news-tags">
@@ -578,7 +628,6 @@ export function FeedPage() {
                               : 'Нет AI-анализа'}
                           </span>
                           {p.is_hidden && <span>Скрыта</span>}
-                          {p.is_demo && <span>Demo</span>}
                         </div>
                         <div className="card-actions">
                           <Link
@@ -649,7 +698,7 @@ export function FeedPage() {
         <aside className="monitor-aside">
           <SignalMap
             sourceNames={Object.fromEntries(
-              [...sourceMap].map(([id, source]) => [id, source.name]),
+              [...sourceMap].map(([id, source]) => [id, formatSourceName(source.name)]),
             )}
             items={items}
             total={total ?? 0}

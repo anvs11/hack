@@ -22,7 +22,13 @@ import type {
   SpecialistDecision,
   SpecialistDecisionCreate,
   TelegramAuthResponse,
+  TelegramDigestSettings,
+  TelegramDigestSettingsPatch,
+  TelegramReportDeliveryResponse,
+  UserPreferencesPatch,
+  UserProfile,
 } from './types'
+import { getTelegramInitData } from '../telegram/adapter'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
 
@@ -60,11 +66,13 @@ type RequestOptions = {
 }
 
 async function request<T>(path: `/api/${string}`, options: RequestOptions = {}): Promise<T> {
+  const telegramInitData = getTelegramInitData()
   const response = await fetch(apiUrl(path), {
     method: options.method ?? 'GET',
     headers: {
       Accept: 'application/json',
       ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...(telegramInitData ? { 'X-Telegram-Init-Data': telegramInitData } : {}),
     },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     signal: options.signal,
@@ -127,6 +135,30 @@ export const api = {
       body: { init_data: initData },
       signal,
     }),
+  getMyProfile: (signal?: AbortSignal) =>
+    request<UserProfile>('/api/me', { signal }),
+  updateMyPreferences: (patch: UserPreferencesPatch, signal?: AbortSignal) =>
+    request<UserProfile>('/api/me', {
+      method: 'PATCH',
+      body: patch,
+      signal,
+    }),
+  getMyTelegramDigestSettings: (signal?: AbortSignal) =>
+    request<TelegramDigestSettings>('/api/me/telegram-digest-settings', { signal }),
+  updateMyTelegramDigestSettings: (
+    patch: TelegramDigestSettingsPatch,
+    signal?: AbortSignal,
+  ) => request<TelegramDigestSettings>('/api/me/telegram-digest-settings', {
+    method: 'PATCH',
+    body: patch,
+    signal,
+  }),
+  deliverReportToTelegram: (content: string, signal?: AbortSignal) =>
+    request<TelegramReportDeliveryResponse>('/api/telegram/report-deliveries', {
+      method: 'POST',
+      body: { content },
+      signal,
+    }),
   createSpecialistDecision: (
     publicationId: string,
     decision: SpecialistDecisionCreate,
@@ -178,10 +210,19 @@ export const api = {
     status: DuplicateStatus | 'all' = 'unreviewed',
     offset = 0,
     signal?: AbortSignal,
-  ) => request<DuplicateCandidateList>(
-    `/api/duplicate-candidates?status=${status}&limit=50&offset=${offset}`,
-    { signal },
-  ),
+    publicationId?: string,
+  ) => {
+    const params = new URLSearchParams({
+      status,
+      limit: '50',
+      offset: String(offset),
+    })
+    if (publicationId) params.set('publication_id', publicationId)
+    return request<DuplicateCandidateList>(
+      `/api/duplicate-candidates?${params.toString()}`,
+      { signal },
+    )
+  },
   createDuplicateReview: (
     candidateId: string,
     review: DuplicateReviewCreate,

@@ -4,7 +4,7 @@ from collections.abc import Generator
 from pathlib import Path
 
 from fastapi import Request
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine, create_engine, event, inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -40,13 +40,14 @@ def _ensure_sqlite_parent(engine: Engine) -> None:
 
 
 def create_schema(engine: Engine) -> None:
-    """Create missing demo tables without changing existing rows."""
+    """Create missing application tables without changing existing rows."""
 
     from backend.app.modules.analysis import models as _analysis_models
     from backend.app.modules.decisions import models as _decision_models
     from backend.app.modules.publications import models as _publication_models
     from backend.app.modules.regulatory_cases import models as _case_models
     from backend.app.modules.sources import models as _source_models
+    from backend.app.modules.users import models as _user_models
 
     _ = (
         _analysis_models,
@@ -54,9 +55,69 @@ def create_schema(engine: Engine) -> None:
         _decision_models,
         _publication_models,
         _source_models,
+        _user_models,
     )
     _ensure_sqlite_parent(engine)
     Base.metadata.create_all(engine)
+    if engine.dialect.name == "sqlite":
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("telegram_digest_preferences")
+        }
+        if "deliver_after" not in columns:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "ALTER TABLE telegram_digest_preferences "
+                        "ADD COLUMN deliver_after TEXT NOT NULL "
+                        "DEFAULT '1970-01-01T00:00:00Z'"
+                    )
+                )
+                connection.execute(
+                    text(
+                        "UPDATE telegram_digest_preferences "
+                        "SET deliver_after = updated_at"
+                    )
+                )
+        case_columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("regulatory_cases")
+        }
+        with engine.begin() as connection:
+            if "origin" not in case_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE regulatory_cases ADD COLUMN origin TEXT NOT NULL "
+                        "DEFAULT 'manual'"
+                    )
+                )
+            if "needs_review" not in case_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE regulatory_cases ADD COLUMN needs_review INTEGER "
+                        "NOT NULL DEFAULT 0"
+                    )
+                )
+            if "identifier_key" not in case_columns:
+                connection.execute(
+                    text("ALTER TABLE regulatory_cases ADD COLUMN identifier_key TEXT")
+                )
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS "
+                    "ix_regulatory_cases_identifier_key "
+                    "ON regulatory_cases(identifier_key)"
+                )
+            )
+    # v0.5 briefly exposed a middle "standard" mode. Collapse it into the
+    # detailed mode while keeping existing local and deployed profiles valid.
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE user_profiles SET view_mode = 'expert' "
+                "WHERE view_mode = 'standard'"
+            )
+        )
 
 
 default_engine = build_engine()

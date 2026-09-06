@@ -29,12 +29,12 @@ const publication = (
     Publication,
     | 'collected_at'
     | 'content_hash'
-    | 'is_demo'
     | 'latest_revision_id'
     | 'tags'
     | 'is_hidden'
     | 'is_manual'
     | 'updated_at'
+    | 'source_references'
   >,
   hashDigit: string,
 ) =>
@@ -42,12 +42,22 @@ const publication = (
     ...value,
     collected_at: value.published_at,
     content_hash: `sha256:${hashDigit.repeat(64)}`,
-    is_demo: true,
     latest_revision_id: null,
     tags: [],
     is_hidden: false,
     is_manual: false,
     updated_at: value.published_at,
+    source_references: [
+      {
+        source_id: value.source_id,
+        external_id: value.external_id,
+        title: value.title,
+        original_url: value.original_url,
+        published_at: value.published_at,
+        collected_at: value.published_at,
+        is_primary: true,
+      },
+    ],
   }) satisfies Publication
 
 const analysis = (
@@ -326,6 +336,8 @@ export const regulatoryCase = {
   registration_number: 'DEMO-2026-001',
   current_stage: 'draft',
   responsible_user_id: 'user-gr-001',
+  origin: 'manual',
+  needs_review: false,
   related_publication_ids: ['pub-001', 'pub-005'],
   created_at: '2026-09-01T08:10:00Z',
   updated_at: '2026-09-01T08:10:00Z',
@@ -353,23 +365,21 @@ export const regulatoryCaseDetail = {
 export const sources = [
   {
     id: 'source-regulation',
-    name: 'Портал проектов НПА (demo)',
+    name: 'Портал проектов НПА',
     type: 'regulator',
     url: 'https://regulation.gov.ru/',
     enabled: true,
     last_checked_at: '2026-09-01T07:35:00Z',
-    is_demo: true,
     last_success_at: '2026-09-01T07:35:00Z',
     last_error: null,
   },
   {
     id: 'source-duma',
-    name: 'Система обеспечения законодательной деятельности (demo)',
+    name: 'Система обеспечения законодательной деятельности',
     type: 'regulator',
     url: 'https://sozd.duma.gov.ru/',
     enabled: true,
     last_checked_at: '2026-09-01T08:05:00Z',
-    is_demo: true,
     last_success_at: '2026-09-01T08:05:00Z',
     last_error: null,
   },
@@ -380,7 +390,6 @@ export const sources = [
     url: 'https://example.org/feeds/business.xml',
     enabled: true,
     last_checked_at: '2026-09-01T11:05:00Z',
-    is_demo: true,
     last_success_at: '2026-09-01T11:05:00Z',
     last_error: null,
   },
@@ -391,18 +400,16 @@ export const sources = [
     url: 'https://example.org/feeds/technology.xml',
     enabled: true,
     last_checked_at: '2026-09-01T11:35:00Z',
-    is_demo: true,
     last_success_at: '2026-09-01T11:35:00Z',
     last_error: null,
   },
   {
     id: 'source-telegram-archive',
-    name: 'Отраслевой Telegram-архив (demo)',
-    type: 'telegram_archive',
-    url: 'https://example.org/telegram/archive',
+    name: 'Тестовый Telegram-канал',
+    type: 'telegram',
+    url: 'https://t.me/test_channel',
     enabled: true,
     last_checked_at: '2026-09-01T09:20:00Z',
-    is_demo: true,
     last_success_at: '2026-09-01T09:20:00Z',
     last_error: null,
   },

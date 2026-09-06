@@ -107,12 +107,13 @@ describe('publication API client', () => {
       }),
     )
 
-    await api.listDuplicateCandidates('all', 100)
+    await api.listDuplicateCandidates('all', 100, undefined, 'pub-001')
 
     expect(Object.fromEntries(receivedParams)).toEqual({
       status: 'all',
       limit: '50',
       offset: '100',
+      publication_id: 'pub-001',
     })
   })
 
@@ -211,7 +212,6 @@ describe('source API client', () => {
           last_checked_at: null,
           last_success_at: null,
           last_error: null,
-          is_demo: false,
         } satisfies Source, { status: 201 })
       }),
     )

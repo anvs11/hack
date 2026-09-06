@@ -120,7 +120,7 @@ describe('regulatory case lifecycle display', () => {
     expect(screen.getByRole('heading', { name: 'Связанных публикаций нет' })).toBeInTheDocument()
   })
 
-  it('renders related IDs as links and marks Telegram as supplementary evidence', async () => {
+  it('renders related publications as links without technical IDs and marks Telegram as supplementary evidence', async () => {
     renderCase()
 
     const officialLink = await screen.findByRole('link', {
@@ -131,14 +131,14 @@ describe('regulatory case lifecycle display', () => {
     })
     expect(officialLink).toHaveAttribute('href', '/publications/pub-001')
     expect(telegramLink).toHaveAttribute('href', '/publications/pub-005')
-    expect(screen.getByText('pub-001')).toBeInTheDocument()
-    expect(screen.getByText('pub-005')).toBeInTheDocument()
-    expect(screen.getByText('Дополнительный материал · Telegram archive')).toBeInTheDocument()
+    expect(screen.queryByText('pub-001')).not.toBeInTheDocument()
+    expect(screen.queryByText('pub-005')).not.toBeInTheDocument()
+    expect(screen.getByText('Дополнительный материал · Telegram')).toBeInTheDocument()
     expect(screen.getByText(/Они не изменяют стадию/)).toBeInTheDocument()
-    expect(screen.getByText(/СМИ и Telegram являются только дополнительными материалами/)).toBeInTheDocument()
+    expect(screen.getByText(/СМИ и Telegram являются дополнительными материалами/)).toBeInTheDocument()
   })
 
-  it('keeps a working publication-ID fallback when one metadata request fails', async () => {
+  it('keeps a neutral working link when publication metadata is unavailable', async () => {
     server.use(
       http.get('*/api/publications/pub-005', () =>
         HttpResponse.json({ message: 'metadata unavailable' }, { status: 500 }),
@@ -147,7 +147,7 @@ describe('regulatory case lifecycle display', () => {
 
     renderCase()
 
-    expect(await screen.findByRole('link', { name: 'Публикация pub-005' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: 'Публикация недоступна' })).toHaveAttribute(
       'href',
       '/publications/pub-005',
     )
@@ -187,7 +187,7 @@ describe('official lifecycle event form', () => {
     expect(screen.getByText('Внесено в установленном порядке')).toBeInTheDocument()
     expect(screen.getByLabelText('Ссылка на официальное подтверждение')).toHaveValue('')
     expect(screen.getByLabelText('Комментарий · необязательно')).toHaveValue('')
-    expect(screen.getByLabelText('Автор события')).toHaveValue('user-gr-001')
+    expect(screen.queryByLabelText('Автор события')).not.toBeInTheDocument()
   })
 
   it('shows 409 without adding an event visually', async () => {
@@ -229,10 +229,6 @@ describe('official lifecycle event form', () => {
     fireEvent.change(screen.getByLabelText('Комментарий · необязательно'), {
       target: { value: 'Сохранить этот комментарий' },
     })
-    fireEvent.change(screen.getByLabelText('Автор события'), {
-      target: { value: 'user-custom' },
-    })
-
     fireEvent.click(screen.getByRole('button', { name: 'Добавить событие' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Введённые данные сохранены')
@@ -240,7 +236,7 @@ describe('official lifecycle event form', () => {
       'https://regulator.example/events/introduced',
     )
     expect(screen.getByLabelText('Комментарий · необязательно')).toHaveValue('Сохранить этот комментарий')
-    expect(screen.getByLabelText('Автор события')).toHaveValue('user-custom')
+    expect(screen.queryByLabelText('Автор события')).not.toBeInTheDocument()
   })
 
   it('blocks repeated clicks while the first lifecycle request is pending', async () => {

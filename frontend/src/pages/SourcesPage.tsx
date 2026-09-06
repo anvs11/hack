@@ -12,7 +12,7 @@ import type {
   SourcePatch,
   SourceType,
 } from '../shared/api/types'
-import { formatDate } from '../shared/format'
+import { formatDate, formatSourceName } from '../shared/format'
 import { PageState } from '../shared/PageState'
 import { RevealText } from '../shared/RevealText'
 
@@ -20,27 +20,21 @@ const sourceTypes: SourceType[] = [
   'rss',
   'regulator',
   'telegram',
-  'telegram_archive',
   'file',
-  'seed',
 ]
 
 const sourceTypeLabels: Record<SourceType, string> = {
   rss: 'RSS-лента',
   regulator: 'Сайт регулятора',
   telegram: 'Telegram-канал',
-  telegram_archive: 'Архив Telegram',
   file: 'Файл',
-  seed: 'Demo seed',
 }
 
 const sourceTypeIcons: Record<SourceType, string> = {
   rss: 'R',
   regulator: '§',
   telegram: 'T',
-  telegram_archive: 'TA',
   file: 'F',
-  seed: 'S',
 }
 
 type LoadState =
@@ -204,7 +198,7 @@ export function SourcesPage() {
   }
 
   const activeCount = state.data.filter((source) => source.enabled).length
-  const liveActiveCount = state.data.filter((source) => source.enabled && !source.is_demo).length
+  const liveActiveCount = state.data.filter((source) => source.enabled).length
 
   return (
     <section>
@@ -224,7 +218,7 @@ export function SourcesPage() {
               disabled={allCollection.pending}
               onClick={handleCollectAll}
             >
-              {allCollection.pending ? 'Собираем все…' : `Собрать live · ${liveActiveCount}`}
+              {allCollection.pending ? 'Собираем все…' : `Собрать источники · ${liveActiveCount}`}
             </button>
           )}
           <SourceDialogTrigger
@@ -264,12 +258,11 @@ export function SourcesPage() {
                         <span className={`source-status ${source.enabled ? 'enabled' : 'disabled'}`}>
                           {source.enabled ? 'Активен' : 'Пауза'}
                         </span>
-                        {source.is_demo && <span className="demo-badge">Demo</span>}
                       </div>
-                      <h2>{source.name}</h2>
+                      <h2>{formatSourceName(source.name)}</h2>
                     </div>
                   </div>
-                  <p className="source-identity">{source.id} · {sourceTypeLabels[source.type]}</p>
+                  <p className="source-identity">{sourceTypeLabels[source.type]}</p>
                   <a className="source-url" href={source.url} target="_blank" rel="noreferrer">
                     {source.url} <span aria-hidden="true">↗</span>
                   </a>

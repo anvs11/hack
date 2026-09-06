@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""CLI for creating the idempotent offline SQLite demo database."""
+"""Create an isolated SQLite database for automated tests."""
 
 import argparse
+import sys
 from pathlib import Path
 
-if __package__:
-    from scripts.seed_core import DEFAULT_DB, import_seed
-else:
-    from seed_core import DEFAULT_DB, import_seed
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.seed_core import DEFAULT_DB, import_seed
 
 
 def main() -> None:

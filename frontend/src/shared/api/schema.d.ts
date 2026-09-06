@@ -36,6 +36,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getMyProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateMyPreferences"];
+        trace?: never;
+    };
+    "/api/telegram/report-deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createTelegramReportDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/telegram-digest-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getMyTelegramDigestSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateMyTelegramDigestSettings"];
+        trace?: never;
+    };
     "/api/publications": {
         parameters: {
             query?: never;
@@ -158,22 +206,6 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["collectSource"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/demo/seed": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["importDemoSeed"];
         delete?: never;
         options?: never;
         head?: never;
@@ -308,7 +340,7 @@ export interface components {
             };
         };
         /** @enum {string} */
-        SourceType: "rss" | "regulator" | "telegram" | "telegram_archive" | "file" | "seed";
+        SourceType: "rss" | "regulator" | "telegram" | "file";
         /** @enum {string} */
         Category: "regulation" | "reputation" | "competitor" | "trend" | "unknown";
         /** @enum {string} */
@@ -343,7 +375,6 @@ export interface components {
             /** Format: date-time */
             last_success_at: string | null;
             last_error: string | null;
-            is_demo: boolean;
         };
         Entity: {
             type: string;
@@ -388,7 +419,6 @@ export interface components {
             collected_at: string;
             content: string;
             content_hash: string;
-            is_demo: boolean;
             latest_analysis_id: string | null;
             latest_revision_id: string | null;
             tags: string[];
@@ -396,6 +426,19 @@ export interface components {
             is_manual: boolean;
             /** Format: date-time */
             updated_at: string;
+            source_references: components["schemas"]["PublicationSourceReference"][];
+        };
+        PublicationSourceReference: {
+            source_id: string;
+            external_id: string;
+            title: string;
+            /** Format: uri */
+            original_url: string;
+            /** Format: date-time */
+            published_at: string;
+            /** Format: date-time */
+            collected_at: string;
+            is_primary: boolean;
         };
         PublicationCreate: {
             source_id: string;
@@ -556,6 +599,55 @@ export interface components {
             auth_date: string;
             query_id: string | null;
         };
+        TelegramReportDeliveryRequest: {
+            content: string;
+        };
+        TelegramReportDeliveryResponse: {
+            /** @constant */
+            delivered: true;
+            message_count: number;
+        };
+        /** @enum {string} */
+        UserRole: "gr" | "pr" | "manager";
+        /** @enum {string} */
+        ViewMode: "compact" | "expert";
+        /** @enum {string} */
+        DigestMinimumPriority: "critical" | "high" | "medium" | "low";
+        UserProfile: {
+            id: string;
+            /** Format: int64 */
+            telegram_id: number | null;
+            name: string;
+            username: string | null;
+            role: components["schemas"]["UserRole"];
+            view_mode: components["schemas"]["ViewMode"];
+            start_filters: {
+                [key: string]: unknown;
+            };
+            can_assign_tasks: boolean;
+            can_confirm_analysis: boolean;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        UserPreferencesPatch: {
+            view_mode?: components["schemas"]["ViewMode"];
+            start_filters?: {
+                [key: string]: unknown;
+            };
+        };
+        TelegramDigestSettings: {
+            available: boolean;
+            enabled: boolean;
+            minimum_priority: components["schemas"]["DigestMinimumPriority"];
+            /** @constant */
+            delivery_interval_minutes: 15;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        TelegramDigestSettingsPatch: {
+            enabled?: boolean;
+            minimum_priority?: components["schemas"]["DigestMinimumPriority"];
+        };
         RegulatoryCaseCreate: {
             title: string;
             registration_number: string;
@@ -570,12 +662,17 @@ export interface components {
             registration_number: string;
             current_stage: components["schemas"]["LifecycleStage"];
             responsible_user_id: string;
+            origin: components["schemas"]["RegulatoryCaseOrigin"];
+            /** @description True only for an automatically discovered draft until a specialist verifies its title, requisites and official lifecycle source. */
+            needs_review: boolean;
             related_publication_ids: string[];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
             updated_at: string;
         };
+        /** @enum {string} */
+        RegulatoryCaseOrigin: "manual" | "automatic";
         LifecycleEventCreate: {
             stage: components["schemas"]["LifecycleStage"];
             /** Format: date-time */
@@ -605,12 +702,6 @@ export interface components {
         RegulatoryCaseDetail: {
             regulatory_case: components["schemas"]["RegulatoryCase"];
             timeline: components["schemas"]["LifecycleEvent"][];
-        };
-        DemoSeedImportReport: {
-            sources: number;
-            publications: number;
-            analyses: number;
-            duplicates: number;
         };
         SourceCollectionResult: {
             source_id: string;
@@ -671,6 +762,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description Raw Telegram.WebApp.initData; absent only for local development */
+        TelegramInitData: string;
         PublicationId: string;
         SourceId: string;
         CaseId: string;
@@ -738,6 +831,223 @@ export interface operations {
             };
             /** @description Telegram authentication is not configured */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getMyProfile: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Raw Telegram.WebApp.initData; absent only for local development */
+                "X-Telegram-Init-Data"?: components["parameters"]["TelegramInitData"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current user's profile and interface preferences */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserProfile"];
+                };
+            };
+            /** @description Signed Telegram launch is required or invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Telegram authentication is not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateMyPreferences: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Raw Telegram.WebApp.initData; absent only for local development */
+                "X-Telegram-Init-Data"?: components["parameters"]["TelegramInitData"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserPreferencesPatch"];
+            };
+        };
+        responses: {
+            /** @description Updated current-user preferences */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserProfile"];
+                };
+            };
+            /** @description Invalid or expired Telegram launch data */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Telegram authentication is not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createTelegramReportDelivery: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Raw Telegram.WebApp.initData; absent only for local development */
+                "X-Telegram-Init-Data"?: components["parameters"]["TelegramInitData"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelegramReportDeliveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Report delivered as one or more Telegram messages */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramReportDeliveryResponse"];
+                };
+            };
+            /** @description Telegram Mini App launch is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Telegram rejected or could not receive the message */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Telegram bot is not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getMyTelegramDigestSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Raw Telegram.WebApp.initData; absent only for local development */
+                "X-Telegram-Init-Data"?: components["parameters"]["TelegramInitData"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Automatic Telegram digest settings for the current user */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramDigestSettings"];
+                };
+            };
+            /** @description Signed Telegram launch is required or invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateMyTelegramDigestSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Raw Telegram.WebApp.initData; absent only for local development */
+                "X-Telegram-Init-Data"?: components["parameters"]["TelegramInitData"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelegramDigestSettingsPatch"];
+            };
+        };
+        responses: {
+            /** @description Updated automatic Telegram digest settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramDigestSettings"];
+                };
+            };
+            /** @description Signed Telegram launch is required or invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Automatic Telegram delivery requires a Telegram user */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1040,26 +1350,6 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    importDemoSeed: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Idempotent offline import result */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DemoSeedImportReport"];
-                };
-            };
-        };
-    };
     collectEnabledSources: {
         parameters: {
             query?: never;
@@ -1084,6 +1374,8 @@ export interface operations {
         parameters: {
             query?: {
                 status?: components["schemas"]["DuplicateFilterStatus"];
+                /** @description Return pairs where this publication is either side of the match */
+                publication_id?: string;
                 limit?: components["parameters"]["Limit"];
                 offset?: components["parameters"]["Offset"];
             };

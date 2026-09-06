@@ -11,10 +11,7 @@ from backend.app.modules.regulatory_cases.schemas import (
     LifecycleEventResponse,
     RegulatoryCaseResponse,
 )
-from backend.app.modules.sources.schemas import (
-    CollectionReport,
-    DemoSeedImportReport,
-)
+from backend.app.modules.sources.schemas import CollectionReport
 
 
 EXAMPLES = Path(__file__).resolve().parents[3] / "contracts" / "examples"
@@ -31,7 +28,6 @@ def test_contract_example_is_valid_json(path: Path) -> None:
         ("publication.json", PublicationResponse),
         ("analysis-version.json", AnalysisVersionResponse),
         ("collection-report.json", CollectionReport),
-        ("demo-seed-import-report.json", DemoSeedImportReport),
         ("regulatory-case.json", RegulatoryCaseResponse),
         ("lifecycle-event.json", LifecycleEventResponse),
     ],

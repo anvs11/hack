@@ -7,7 +7,7 @@ const decisionComment = 'B8 E2E: критический приоритет по�
 const lifecycleComment = 'B8 E2E: начальная стадия подтверждена'
 const confirmationUrl = 'https://regulation.gov.ru/e2e/case-001'
 
-test('real API demo: решение и lifecycle отражаются в дайджесте', async ({ page }) => {
+test('isolated real API: решение и lifecycle отражаются в дайджесте', async ({ page }) => {
   const consoleErrors: string[] = []
   const pageErrors: string[] = []
   const digestApiRequests: string[] = []
@@ -37,7 +37,7 @@ test('real API demo: решение и lifecycle отражаются в дай�
 
     await page.getByRole('link', { name: publicationTitle, exact: true }).click()
     await expect(page.getByRole('heading', { level: 1, name: publicationTitle, exact: true })).toBeVisible()
-    await expect(page.getByText('analysis-001 · v1')).toBeVisible()
+    await page.getByRole('button', { name: 'Подробно', exact: true }).click()
     await expect(page.getByText('AI-приоритет · Высокий', { exact: true })).toBeVisible()
     await page.locator('.history-disclosure > summary').click()
     await expect(page.getByText('1 AI · 0 решений', { exact: false }).first()).toBeVisible()
@@ -62,8 +62,8 @@ test('real API demo: решение и lifecycle отражаются в дай�
     await expect(page.locator('.decision-history-list')).toContainText(decisionComment)
     await expect(page.getByText('AI-приоритет · Высокий', { exact: true })).toBeVisible()
 
-    await page.getByRole('button', { name: 'Привязать к НПА' }).click()
-    const dialog = page.getByRole('dialog', { name: 'Привязать публикацию к НПА' })
+    await page.getByRole('button', { name: 'Добавить в досье' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Добавить публикацию в досье документа' })
     await expect(dialog).toBeVisible()
     await dialog.getByRole('radio', { name: new RegExp(`${caseTitle}.*DEMO-2026-001`) }).check()
     await Promise.all([
@@ -73,13 +73,13 @@ test('real API demo: решение и lifecycle отражаются в дай�
       ),
       dialog.getByRole('button', { name: 'Подтвердить привязку' }).click(),
     ])
-    await expect(dialog.getByRole('status')).toHaveText('Публикация успешно привязана к НПА.')
+    await expect(dialog.getByRole('status')).toHaveText('Публикация добавлена в досье документа.')
     await expect(dialog.getByText('Уже привязана')).toBeVisible()
     await dialog.getByRole('button', { name: 'Закрыть диалог' }).click()
     await expect(dialog).toBeHidden()
 
     const navigation = page.getByRole('navigation', { name: 'Основные разделы' })
-    await navigation.getByRole('link', { name: 'Кейсы НПА' }).click()
+    await navigation.getByRole('link', { name: 'Нормативные документы' }).click()
     await page.getByRole('link', { name: caseTitle, exact: true }).click()
     await expect(page.getByRole('heading', { level: 1, name: caseTitle })).toBeVisible()
     await expect(page.locator('.stage-card')).toContainText('Текущая стадияПроект')
@@ -91,7 +91,6 @@ test('real API demo: решение и lifecycle отражаются в дай�
     await page.getByLabel('Ссылка на официальное подтверждение').fill(confirmationUrl)
     await page.getByLabel('Тип официального источника').selectOption('regulator')
     await page.getByLabel('Комментарий · необязательно').fill(lifecycleComment)
-    await page.getByLabel('Автор события').fill('user-gr-001')
     await Promise.all([
       page.waitForResponse((response) =>
         response.url().endsWith('/api/regulatory-cases/case-001/lifecycle-events') &&
@@ -113,12 +112,12 @@ test('real API demo: решение и lifecycle отражаются в дай�
     await navigation.getByRole('link', { name: /Отчёт/ }).click()
     await page.getByRole('link', { name: 'Автоматическая сводка', exact: true }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Дайджест для руководителя' })).toBeVisible()
-    await expect(page.getByText('all_available_data', { exact: true })).toBeVisible()
+    await expect(page.getByText('Сформирован', { exact: true })).toBeVisible()
 
     const counters = page.getByRole('group', { name: 'Сводные счётчики' })
     for (const [label, count] of [
       ['Критические', '1'],
-      ['Стадии НПА', '1'],
+      ['Изменения документов', '1'],
       ['На проверке', '6'],
       ['Действия', '2'],
     ] as const) {
@@ -126,7 +125,7 @@ test('real API demo: решение и lifecycle отражаются в дай�
     }
 
     const criticalSection = page.getByRole('region', { name: 'Подтверждённые критические материалы' })
-    const lifecycleSection = page.getByRole('region', { name: 'Изменения стадий НПА' })
+    const lifecycleSection = page.getByRole('region', { name: 'Изменения нормативных документов' })
     const reviewSection = page.getByRole('region', { name: 'Требующие проверки карточки' })
     const actionsSection = page.getByRole('region', { name: 'Действия пользователей' })
     await expect(criticalSection).toBeVisible()

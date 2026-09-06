@@ -32,7 +32,6 @@ class CollectedPublication(BaseModel):
     original_url: AnyUrl
     published_at: AwareDatetime
     content: str = Field(min_length=1)
-    is_demo: bool = False
 
 
 @dataclass(frozen=True)
@@ -40,7 +39,6 @@ class CollectorSource:
     id: str
     type: SourceType
     url: str
-    is_demo: bool = False
 
 
 @dataclass(frozen=True)
@@ -87,8 +85,6 @@ class RssCollector:
         self._opener = opener or _open_url
 
     def collect(self, source: CollectorSource) -> CollectorResult:
-        if source.is_demo:
-            raise CollectionFailed("Demo RSS source has no local collection fixture")
         if urlsplit(source.url).scheme not in {"http", "https"}:
             raise CollectionFailed("RSS source must use an http(s) URL")
         _require_public_network_url(source.url)
@@ -226,7 +222,7 @@ class _TelegramPreviewParser(HTMLParser):
 
 
 def build_collector(source_type: SourceType) -> Collector:
-    if source_type in {SourceType.FILE, SourceType.SEED}:
+    if source_type is SourceType.FILE:
         return JsonFileCollector()
     if source_type is SourceType.RSS:
         return RssCollector()

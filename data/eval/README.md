@@ -11,6 +11,14 @@
   входов;
 - `results/seed-replay-smoke-v1/rows.csv` — результат по каждой публикации;
 - `results/seed-replay-smoke-v1/REPORT.md` — короткий человекочитаемый отчёт.
+- `templates/` — пустые CSV-шаблоны независимой разметки качества, дублей,
+  утверждений summary и пользовательского хронометража;
+- `results/runtime-smoke-v1/` — локальная скорость API и диагностическая задержка
+  collection timestamps;
+- `results/live-llm-latency-v3/` — live latency вместе с долей ошибок provider.
+
+Полный протокол и границы допустимых выводов:
+[`docs/METRICS_VALIDATION.md`](../../docs/METRICS_VALIDATION.md).
 
 ## Воспроизведение smoke
 
@@ -36,6 +44,7 @@ Smoke использует `data/seed/replay-analyses.json` одновремен
 ```bash
 .venv/bin/python scripts/evaluate_live_analysis.py
 .venv/bin/python scripts/evaluate_dedup.py
+.venv/bin/python scripts/measure_runtime_metrics.py
 ```
 
 `live-llm-smoke-v1` измеряет timeout, latency, отношение длины summary к исходнику,

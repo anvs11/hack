@@ -4,6 +4,8 @@ import { ApiError, api } from '../shared/api/client'
 import type {
   AnalysisVersion,
   Category,
+  DuplicateCandidate,
+  DuplicateVerdict,
   Priority,
   Publication,
   PublicationDetail,
@@ -14,7 +16,7 @@ import type {
   SpecialistDecision,
   SpecialistDecisionCreate,
 } from '../shared/api/types'
-import { formatCategory, formatDate, formatPriority } from '../shared/format'
+import { formatCategory, formatDate, formatPriority, formatSourceName } from '../shared/format'
 import { PageState } from '../shared/PageState'
 import { RevealText } from '../shared/RevealText'
 import { getCurrentActorId } from '../shared/telegram/adapter'
@@ -93,6 +95,7 @@ type PageData = {
   detail: PublicationDetail
   history: PublicationHistory
   sources: Source[]
+  duplicateCandidates: DuplicateCandidate[]
   warnings?: string[]
 }
 
@@ -132,8 +135,9 @@ export function PublicationPage() {
       api.getPublication(id, controller.signal),
       api.getPublicationHistory(id, controller.signal),
       api.listSources(controller.signal),
+      api.listDuplicateCandidates('unreviewed', 0, controller.signal, id),
     ]).then(
-      ([detailResult, historyResult, sourcesResult]) => {
+      ([detailResult, historyResult, sourcesResult, duplicatesResult]) => {
         if (controller.signal.aborted) return
         if (detailResult.status === 'rejected') {
           setState({
@@ -162,12 +166,19 @@ export function PublicationPage() {
                   },
             sources:
               sourcesResult.status === 'fulfilled' ? sourcesResult.value : [],
+            duplicateCandidates:
+              duplicatesResult.status === 'fulfilled'
+                ? duplicatesResult.value.items
+                : [],
             warnings: [
               historyResult.status === 'rejected'
                 ? 'История недоступна. Показан текущий анализ.'
                 : '',
               sourcesResult.status === 'rejected'
                 ? 'Список источников недоступен. Показан ID источника.'
+                : '',
+              duplicatesResult.status === 'rejected'
+                ? 'Проверка возможных совпадений временно недоступна.'
                 : '',
             ].filter(Boolean),
           },
@@ -194,7 +205,7 @@ export function PublicationPage() {
       <PageState
         kind="loading"
         title="Открываем публикацию"
-        message={`ID: ${id}`}
+        message="Получаем материал и историю анализа."
       />
     )
   }
@@ -228,7 +239,12 @@ export function PublicationPage() {
     if (routeId.current !== id) return
     setState({
       status: 'success',
-      data: { detail: nextDetail, history: nextHistory, sources },
+      data: {
+        detail: nextDetail,
+        history: nextHistory,
+        sources,
+        duplicateCandidates: state.data.duplicateCandidates,
+      },
       error: null,
     })
     setActionStatus('Решение специалиста сохранено в истории.')
@@ -242,7 +258,12 @@ export function PublicationPage() {
     if (routeId.current !== id) return
     setState({
       status: 'success',
-      data: { detail: nextDetail, history: nextHistory, sources },
+      data: {
+        detail: nextDetail,
+        history: nextHistory,
+        sources,
+        duplicateCandidates: state.data.duplicateCandidates,
+      },
       error: null,
     })
     setActionStatus(message)
@@ -253,7 +274,7 @@ export function PublicationPage() {
     setActionStatus('')
     try {
       const analysis = await api.createPublicationAnalysis(publication.id, {
-        analyzer: publication.is_demo ? 'replay' : 'live_llm',
+        analyzer: 'live_llm',
       })
       const [nextDetail, nextHistory] = await Promise.all([
         api.getPublication(id),
@@ -262,7 +283,12 @@ export function PublicationPage() {
       if (routeId.current !== id) return
       setState({
         status: 'success',
-        data: { detail: nextDetail, history: nextHistory, sources },
+        data: {
+          detail: nextDetail,
+          history: nextHistory,
+          sources,
+          duplicateCandidates: state.data.duplicateCandidates,
+        },
         error: null,
       })
       setSelectedAnalysisId(analysis.id)
@@ -285,6 +311,46 @@ export function PublicationPage() {
     }
   }
 
+  async function reviewDuplicate(
+    candidate: DuplicateCandidate,
+    verdict: DuplicateVerdict,
+  ) {
+    setActionStatus('Сохраняем решение о совпадении…')
+    try {
+      await api.createDuplicateReview(candidate.id, {
+        verdict,
+        reviewer_id: getCurrentActorId(),
+        comment: null,
+      })
+      const nextDetail = await api.getPublication(id)
+      if (routeId.current !== id) return
+      setState({
+        status: 'success',
+        data: {
+          ...state.data,
+          detail: nextDetail,
+          duplicateCandidates: state.data.duplicateCandidates.filter(
+            (item) => item.id !== candidate.id,
+          ),
+        },
+        error: null,
+      })
+      setActionStatus(
+        verdict === 'duplicate'
+          ? 'Источники объединены. В мониторинге останется одна карточка события.'
+          : verdict === 'related'
+            ? 'Материалы отмечены как связанные, но останутся отдельными событиями.'
+            : 'Материалы отмечены как разные события.',
+      )
+    } catch (error) {
+      setActionStatus(
+        error instanceof Error
+          ? `Решение о совпадении не сохранено: ${error.message}`
+          : 'Решение о совпадении не сохранено.',
+      )
+    }
+  }
+
   return (
     <article className="detail-page publication-workspace">
       <Link className="back-link" to={returnTo}>
@@ -295,19 +361,52 @@ export function PublicationPage() {
       </Link>
       <header className="detail-heading">
         <div className="card-meta">
-          <span>{source?.name ?? publication.source_id}</span>
+          <span>{formatSourceName(source?.name ?? publication.source_id)}</span>
           <span>{formatDate(publication.published_at)}</span>
         </div>
         <RevealText lines={[publication.title]} />
         <div className="detail-header-actions">
-          <a
-            className="source-link"
-            href={publication.original_url}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Открыть первоисточник ↗
-          </a>
+          {publication.source_references.length === 1 ? (
+            <a
+              className="source-reference-single"
+              href={publication.source_references[0].original_url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Открыть первоисточник ↗
+            </a>
+          ) : (
+            <details className="source-references">
+              <summary>
+                Первоисточники · {publication.source_references.length}
+              </summary>
+              <ul>
+                {publication.source_references.map((reference) => {
+                  const referenceSource = sources.find(
+                    (item) => item.id === reference.source_id,
+                  )
+                  return (
+                    <li key={reference.original_url}>
+                      <div>
+                        <a
+                          href={reference.original_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {formatSourceName(
+                            referenceSource?.name ?? reference.title,
+                          )}{' '}
+                          ↗
+                        </a>
+                        <small>{formatDate(reference.published_at)}</small>
+                      </div>
+                      {reference.is_primary && <span>Главный</span>}
+                    </li>
+                  )
+                })}
+              </ul>
+            </details>
+          )}
           <ReportButton detail={detail} source={source} />
         </div>
         {publication.tags.length > 0 && (
@@ -343,6 +442,14 @@ export function PublicationPage() {
         </p>
       )}
 
+      {state.data.duplicateCandidates.length > 0 && (
+        <DuplicateReviewPanel
+          candidates={state.data.duplicateCandidates}
+          publicationId={publication.id}
+          onReview={reviewDuplicate}
+        />
+      )}
+
       <details className="metadata-disclosure">
         <summary>Управление публикацией</summary>
         <PublicationMetadataEditor
@@ -354,8 +461,8 @@ export function PublicationPage() {
 
       <section className="analysis-launch" aria-label="Запуск AI-анализа">
         <div>
-          <p className="eyebrow">Новая неизменяемая версия</p>
-          <p>Исходная публикация и прошлые результаты останутся в истории.</p>
+          <p className="eyebrow">Обновить анализ</p>
+          <p>Предыдущий результат сохранится в истории.</p>
         </div>
         <button
           className="primary-action"
@@ -379,11 +486,11 @@ export function PublicationPage() {
         </p>
       )}
       <div className="detail-grid">
-        <section className="content-panel">
+        <section className="content-panel source-content-panel">
           <div className="panel-index" aria-hidden="true">
             01
           </div>
-          <p className="eyebrow">Исходный материал</p>
+          <p className="eyebrow">Шаг 1 · Исходный материал</p>
           <h2>Содержание</h2>
           <p className="publication-content">{publication.content}</p>
         </section>
@@ -414,7 +521,7 @@ export function PublicationPage() {
         </div>
       )}
 
-      <details className="history-disclosure">
+      <details className="history-disclosure expert-detail">
         <summary>
           История анализа и решений · {history.analyses.length} AI ·{' '}
           {history.decisions.length} решений
@@ -468,6 +575,87 @@ export function PublicationPage() {
   )
 }
 
+function DuplicateReviewPanel({
+  candidates,
+  publicationId,
+  onReview,
+}: {
+  candidates: DuplicateCandidate[]
+  publicationId: string
+  onReview: (
+    candidate: DuplicateCandidate,
+    verdict: DuplicateVerdict,
+  ) => Promise<void>
+}) {
+  const [busyId, setBusyId] = useState('')
+
+  async function review(candidate: DuplicateCandidate, verdict: DuplicateVerdict) {
+    if (busyId) return
+    setBusyId(candidate.id)
+    await onReview(candidate, verdict)
+    setBusyId('')
+  }
+
+  return (
+    <section className="duplicate-review-panel" aria-labelledby="duplicate-review-heading">
+      <div>
+        <p className="eyebrow">Проверка совпадений</p>
+        <h2 id="duplicate-review-heading">Это может быть то же событие</h2>
+        <p>
+          Подтвердите объединение, чтобы в мониторинге осталась одна карточка,
+          а все первоисточники сохранились внутри неё.
+        </p>
+      </div>
+      <div className="duplicate-review-list">
+        {candidates.map((candidate) => {
+          const other = candidate.publication.publication.id === publicationId
+            ? candidate.candidate_publication.publication
+            : candidate.publication.publication
+          return (
+            <article key={candidate.id}>
+              <span>{similarityLabel(candidate.similarity)}</span>
+              <h3>{other.title}</h3>
+              <p>{other.content.slice(0, 240)}{other.content.length > 240 ? '…' : ''}</p>
+              <div className="duplicate-review-actions">
+                <button
+                  className="primary-action"
+                  disabled={Boolean(busyId)}
+                  onClick={() => void review(candidate, 'duplicate')}
+                  type="button"
+                >
+                  Объединить источники
+                </button>
+                <button
+                  className="secondary-action"
+                  disabled={Boolean(busyId)}
+                  onClick={() => void review(candidate, 'related')}
+                  type="button"
+                >
+                  Оставить связанными
+                </button>
+                <button
+                  className="secondary-action"
+                  disabled={Boolean(busyId)}
+                  onClick={() => void review(candidate, 'different')}
+                  type="button"
+                >
+                  Это разные события
+                </button>
+              </div>
+            </article>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function similarityLabel(similarity: number) {
+  if (similarity >= 0.9) return 'Очень похожий материал'
+  if (similarity >= 0.8) return 'Похожий материал'
+  return 'Возможное совпадение'
+}
+
 function AnalysisDetails({ analysis }: { analysis: AnalysisVersion }) {
   return (
     <section
@@ -477,25 +665,17 @@ function AnalysisDetails({ analysis }: { analysis: AnalysisVersion }) {
       <div className="panel-index" aria-hidden="true">
         02
       </div>
-      <p className="eyebrow">AI-анализ · v{analysis.version}</p>
+      <p className="eyebrow">Шаг 2 · AI-анализ · v{analysis.version}</p>
       <h2 id="analysis-heading">Выбранная версия</h2>
       <p className="preview-version">
         Создано {formatDate(analysis.created_at)}
       </p>
-      <details className="analysis-technical">
-        <summary>Версия и технические сведения</summary>
+      <details className="analysis-technical expert-detail">
+        <summary>Информация об анализе</summary>
         <dl className="analysis-meta">
           <div>
-            <dt>Анализатор</dt>
-            <dd>{analysis.analyzer}</dd>
-          </div>
-          <div>
-            <dt>Модель</dt>
-            <dd>{analysis.model}</dd>
-          </div>
-          <div>
-            <dt>Prompt</dt>
-            <dd>{analysis.prompt_version}</dd>
+            <dt>Версия AI-анализа</dt>
+            <dd>v{analysis.version}</dd>
           </div>
           <div>
             <dt>Создано</dt>
@@ -517,15 +697,7 @@ function AnalysisDetails({ analysis }: { analysis: AnalysisVersion }) {
         </span>
       </div>
       <dl className="analysis-stats">
-        <div>
-          <dt>Индекс важности</dt>
-          <dd>
-            {analysis.importance_score === null
-              ? 'Не рассчитан'
-              : `${analysis.importance_score} из 18`}
-          </dd>
-        </div>
-        <div>
+        <div className="expert-detail">
           <dt>Неопределённость</dt>
           <dd>{Math.round(analysis.uncertainty * 100)}%</dd>
         </div>
@@ -562,7 +734,7 @@ function AnalysisDetails({ analysis }: { analysis: AnalysisVersion }) {
         </section>
       </div>
 
-      <section className="criteria-section">
+      <section className="criteria-section expert-detail">
         <h3>Из чего складывается важность</h3>
         <p className="criteria-hint">
           Каждый критерий оценивается от 0 до 3. Сумма определяет AI-приоритет,
@@ -593,7 +765,7 @@ function AnalysisDetails({ analysis }: { analysis: AnalysisVersion }) {
         </dl>
       </section>
 
-      <section className="evidence-section">
+      <section className="evidence-section expert-detail">
         <h3>Доказательства</h3>
         {analysis.evidence.length ? (
           <ol className="evidence-list">
@@ -720,9 +892,6 @@ function History({
                   <span>
                     v{analysis.version} · {formatDate(analysis.created_at)}
                   </span>
-                  <strong>
-                    {analysis.analyzer} / {analysis.model}
-                  </strong>
                   <small>{analysis.summary}</small>
                   <small>
                     {formatCategory(analysis.category)} · AI-
@@ -892,7 +1061,7 @@ function PublicationMetadataEditor({
             <input
               value={tags}
               onChange={(event) => setTags(event.target.value)}
-              placeholder="НПА, ИТ, гранты"
+              placeholder="регулирование, ИТ, гранты"
             />
           </label>
           <div className="decision-actions form-field-wide">
@@ -977,14 +1146,6 @@ function DecisionPanel({
 
   return (
     <form className="decision-form" onSubmit={submit}>
-      <div className="form-context">
-        <span>Analysis ID</span>
-        <strong>
-          {analysis.id} · v{analysis.version}
-        </strong>
-        <span>Автор действия</span>
-        <strong>{getCurrentActorId()}</strong>
-      </div>
       <label className="form-field form-field-wide">
         <span>Итоговое саммари</span>
         <textarea
@@ -1138,7 +1299,7 @@ function CaseLinkDialog({ publicationId }: { publicationId: string }) {
       setError(
         caught instanceof Error
           ? caught.message
-          : 'Не удалось загрузить кейсы НПА',
+          : 'Не удалось загрузить досье документов',
       )
     }
   }
@@ -1157,7 +1318,7 @@ function CaseLinkDialog({ publicationId }: { publicationId: string }) {
       await api.linkPublicationToCase(selectedCaseId, publicationId)
       const nextCases = await api.listRegulatoryCases()
       setCases(nextCases)
-      setStatus('Публикация успешно привязана к НПА.')
+      setStatus('Публикация добавлена в досье документа.')
     } catch (caught) {
       setError(
         caught instanceof Error
@@ -1178,7 +1339,7 @@ function CaseLinkDialog({ publicationId }: { publicationId: string }) {
         type="button"
         onClick={openDialog}
       >
-        Привязать к НПА
+        Добавить в досье
       </button>
       {isOpen && (
         <div
@@ -1197,7 +1358,7 @@ function CaseLinkDialog({ publicationId }: { publicationId: string }) {
             <div className="dialog-heading">
               <div>
                 <p className="eyebrow">Существующие кейсы</p>
-                <h2 id="case-dialog-title">Привязать публикацию к НПА</h2>
+                <h2 id="case-dialog-title">Добавить публикацию в досье документа</h2>
               </div>
               <button
                 ref={closeRef}
@@ -1211,7 +1372,7 @@ function CaseLinkDialog({ publicationId }: { publicationId: string }) {
             </div>
             {cases === null && !error && (
               <p className="inline-empty" role="status">
-                Загружаем кейсы НПА…
+                Загружаем досье документов…
               </p>
             )}
             {error && (
@@ -1221,12 +1382,12 @@ function CaseLinkDialog({ publicationId }: { publicationId: string }) {
             )}
             {cases?.length === 0 && (
               <p className="inline-empty" role="status">
-                Существующих кейсов НПА пока нет.
+                Досье нормативных документов пока нет.
               </p>
             )}
             {cases && cases.length > 0 && (
               <fieldset className="case-options">
-                <legend>Выберите кейс НПА</legend>
+                <legend>Выберите досье документа</legend>
                 {cases.map((regulatoryCase) => (
                   <label key={regulatoryCase.id}>
                     <input

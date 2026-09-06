@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import signal
 import sys
@@ -49,12 +50,26 @@ class EvaluationRow:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--database-url", default=DEFAULT_DATABASE_URL)
-    parser.add_argument("--model-id", default="Qwen/Qwen3.5-0.8B")
+    parser.add_argument(
+        "--model-id",
+        default=None,
+        help="Override configured model; by default use HACK_LLM_API_MODEL_ID/HACK_HF_MODEL_ID",
+    )
     parser.add_argument("--cache-dir", type=Path, default=ROOT / ".local" / "huggingface")
     parser.add_argument("--limit", type=int, default=3)
     parser.add_argument("--timeout-seconds", type=int, default=120)
-    parser.add_argument("--max-input-chars", type=int, default=12_000)
-    parser.add_argument("--max-new-tokens", type=int, default=512)
+    parser.add_argument(
+        "--max-input-chars",
+        type=int,
+        default=None,
+        help="Override configured input limit",
+    )
+    parser.add_argument(
+        "--max-new-tokens",
+        type=int,
+        default=None,
+        help="Override HACK_LLM_MAX_NEW_TOKENS",
+    )
     parser.add_argument("--allow-download", action="store_true")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     return parser.parse_args()
@@ -91,11 +106,12 @@ def evaluate(args: argparse.Namespace) -> dict:
             "quality_claim_allowed": False,
             "reason": "No independent human labels were used.",
             "created_at": datetime.now(UTC).isoformat(),
-            "model": args.model_id,
+            "provider": analyzer.provider,
+            "model": analyzer.model_id,
             "limit": args.limit,
             "timeout_seconds": args.timeout_seconds,
-            "max_input_chars": args.max_input_chars,
-            "max_new_tokens": args.max_new_tokens,
+            "max_input_chars": analyzer.max_input_chars,
+            "max_new_tokens": analyzer.max_new_tokens,
         },
         "aggregate": {
             "attempted": len(rows),
@@ -103,6 +119,21 @@ def evaluate(args: argparse.Namespace) -> dict:
             "timed_out": sum(row.status == "timeout" for row in rows),
             "failed": sum(row.status == "error" for row in rows),
             "mean_latency_seconds": _mean([row.latency_seconds for row in successful]),
+            "median_latency_seconds": _percentile(
+                [row.latency_seconds for row in successful],
+                50,
+            ),
+            "p95_latency_seconds": _percentile(
+                [row.latency_seconds for row in successful],
+                95,
+            ),
+            "max_latency_seconds": max(
+                (row.latency_seconds for row in successful),
+                default=None,
+            ),
+            "within_15_seconds_count": sum(
+                row.latency_seconds <= 15 for row in successful
+            ),
             "mean_compression_ratio": _mean(
                 [row.compression_ratio for row in successful if row.compression_ratio is not None]
             ),
@@ -205,6 +236,14 @@ def _mean(values: list[float]) -> float | None:
     return round(sum(values) / len(values), 4) if values else None
 
 
+def _percentile(values: list[float], percent: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    index = max(0, math.ceil(percent / 100 * len(ordered)) - 1)
+    return round(ordered[index], 4)
+
+
 def write_report(report: dict, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "report.json").write_text(
@@ -221,6 +260,10 @@ def write_report(report: dict, output_dir: Path) -> None:
 - Timed out: {aggregate['timed_out']}
 - Failed: {aggregate['failed']}
 - Mean latency, successful only: {aggregate['mean_latency_seconds']}
+- Median latency, successful only: {aggregate['median_latency_seconds']}
+- P95 latency, successful only: {aggregate['p95_latency_seconds']}
+- Successful analyses within 15 seconds:
+  {aggregate['within_15_seconds_count']}/{aggregate['successful']}
 - Mean summary/input character ratio: {aggregate['mean_compression_ratio']}
 
 This run validates wiring and runtime behavior only. `quality_claim_allowed=false`;

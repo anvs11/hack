@@ -5,7 +5,7 @@ import re
 from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -72,6 +72,7 @@ class LiveModelOutput(BaseModel):
     facts: list[str]
     entities: list[Entity]
     category: Category
+    proposed_priority: Literal["critical", "high", "medium", "low"]
     criteria: Criteria
     evidence: list[Evidence]
     uncertainty: float = Field(ge=0, le=1)
@@ -133,7 +134,7 @@ class ReplayAnalyzer:
 
 class LiveLLMAnalyzer:
     analyzer = Analyzer.LIVE_LLM
-    prompt_version = "analysis-v3"
+    prompt_version = "analysis-v4"
 
     def __init__(
         self,
@@ -220,7 +221,6 @@ class LiveLLMAnalyzer:
                     model=self.model_id,
                     prompt_version=self.prompt_version,
                     **model_output.model_dump(),
-                    proposed_priority=Priority.UNKNOWN,
                     importance_score=None,
                     needs_review=True,
                 )
@@ -352,15 +352,18 @@ class OpenAICompatibleGenerator:
             if not isinstance(generated, str):
                 raise TypeError("message content is not a string")
             return [{"generated_text": generated}]
-        except (
-            HTTPError,
-            URLError,
-            KeyError,
-            IndexError,
-            TypeError,
-            json.JSONDecodeError,
-        ) as error:
-            raise AnalyzerUnavailable("OpenAI-compatible LLM request failed") from error
+        except HTTPError as error:
+            raise AnalyzerUnavailable(
+                f"OpenAI-compatible LLM request failed with HTTP {error.code}"
+            ) from error
+        except URLError as error:
+            raise AnalyzerUnavailable(
+                f"OpenAI-compatible LLM network request failed: {error.reason}"
+            ) from error
+        except (KeyError, IndexError, TypeError, json.JSONDecodeError) as error:
+            raise AnalyzerUnavailable(
+                "OpenAI-compatible LLM returned an invalid response"
+            ) from error
 
 
 def _plain_messages(messages: list[dict[str, Any]]) -> list[dict[str, str]]:
@@ -403,8 +406,10 @@ def _analysis_prompt(*, title: str, content: str) -> str:
         "service_or_legal_blocking_risk — блокировка сервиса, запрет, уголовная ответственность; "
         "strategic_technology_status — ИИ, данные, ЦОД или ПО объявлены стратегически значимыми; "
         "binding_legal_precedent — обязательный правовой или судебный прецедент для бизнеса. "
-        "Верни только JSON по схеме ниже. Не вычисляй importance_score и priority — это делает "
-        "обычный код.\n"
+        "Предложи словесный proposed_priority: critical, high, medium или low. "
+        "Не вычисляй importance_score: при полных критериях его и итоговое предложение "
+        "пересчитает обычный код; при неполных критериях твой словесный приоритет будет "
+        "показан только как требующий проверки. Верни только JSON по схеме ниже.\n"
         f"JSON Schema: {json.dumps(schema, ensure_ascii=False)}\n"
         f"Заголовок: {title}\nТекст: {content}"
     )

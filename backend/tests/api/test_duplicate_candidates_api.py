@@ -15,6 +15,7 @@ from backend.app.modules.sources.models import (
     PublicationEmbedding,
 )
 from backend.app.modules.sources.dedup_service import backfill_duplicate_candidates
+from backend.tests.seed import seed_test_database
 
 
 @pytest.fixture
@@ -22,8 +23,8 @@ def client_with_candidate(
     tmp_path: Path,
 ) -> Generator[tuple[TestClient, Engine], None, None]:
     engine = build_engine(f"sqlite:///{tmp_path / 'duplicates.sqlite3'}")
+    seed_test_database(engine)
     with TestClient(create_app(database_engine=engine)) as client:
-        assert client.post("/api/demo/seed").status_code == 200
         with Session(engine) as session:
             session.add(
                 DuplicateCandidate(
@@ -55,6 +56,19 @@ def test_list_duplicate_candidates_returns_comparable_publications(
     assert body["items"][0]["publication"]["publication"]["id"] == "pub-002"
     assert body["items"][0]["candidate_publication"]["publication"]["id"] == "pub-001"
     assert body["items"][0]["reviews"] == []
+
+    matching = client.get(
+        "/api/duplicate-candidates",
+        params={"publication_id": "pub-001"},
+    )
+    missing = client.get(
+        "/api/duplicate-candidates",
+        params={"publication_id": "pub-010"},
+    )
+    assert matching.status_code == 200
+    assert matching.json()["total"] == 1
+    assert missing.status_code == 200
+    assert missing.json()["total"] == 0
 
 
 def test_duplicate_reviews_are_append_only_and_update_projection(
@@ -92,6 +106,18 @@ def test_duplicate_reviews_are_append_only_and_update_projection(
     )
     assert all_candidates.status_code == 200
     assert all_candidates.json()["total"] == 1
+    feed_ids = [
+        item["publication"]["id"]
+        for item in client.get("/api/publications").json()["items"]
+    ]
+    assert "pub-002" not in feed_ids
+    canonical_references = client.get("/api/publications/pub-001").json()[
+        "publication"
+    ]["source_references"]
+    assert {item["original_url"] for item in canonical_references} == {
+        "https://example.org/regulation/demo-reg-001",
+        "https://example.org/duma/demo-law-002",
+    }
     with Session(engine) as session:
         rows = list(
             session.scalars(
@@ -124,8 +150,9 @@ def test_semantic_backfill_is_idempotent(
     tmp_path: Path,
 ) -> None:
     engine = build_engine(f"sqlite:///{tmp_path / 'backfill.sqlite3'}")
+    seed_test_database(engine)
     with TestClient(create_app(database_engine=engine)) as client:
-        assert client.post("/api/demo/seed").status_code == 200
+        pass
 
     class FakeEmbedder:
         model_id = "fake-backfill-v1"
