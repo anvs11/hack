@@ -1,28 +1,28 @@
 {
-  "id": "analysis-001",
-  "publication_id": "pub-001",
+  "id": "analysis-ai-law-243",
+  "publication_id": "publication-ai-law-243",
   "version": 1,
-  "analyzer": "replay",
-  "model": "demo-replay-v1",
+  "analyzer": "live_llm",
+  "model": "Qwen/Qwen3.5-0.8B",
   "prompt_version": "analysis-v1",
-  "input_hash": "sha256:96f1261f1bebf3d64e379a0e23bf774da16a08de83056aefeda661c8ed367c45",
-  "summary": "Опубликован демонстрационный проект требований к обработке данных. Документ находится на стадии общественного обсуждения. Специалисту нужно проверить применимость требований и срок подачи замечаний.",
+  "input_hash": "sha256:b632d45946549c1fa13bb4c12f22daae74817399ade9ebcdb22ed6d6789cd576",
+  "summary": "Федеральный закон № 243-ФЗ устанавливает правила и меры поддержки для развития больших фундаментальных моделей искусственного интеллекта. Основные положения вступили в силу 1 сентября 2026 года. Компаниям следует проверить применимость требований к используемым и разрабатываемым AI-моделям.",
   "facts": [
-    "Опубликован проект требований",
-    "Для проекта указан период общественного обсуждения"
+    "Федеральный закон имеет номер 243-ФЗ",
+    "Основные положения вступили в силу 1 сентября 2026 года"
   ],
   "entities": [
-    {"type": "document", "value": "проект требований"},
-    {"type": "topic", "value": "обработка данных"}
+    {"type": "document", "value": "Федеральный закон № 243-ФЗ"},
+    {"type": "topic", "value": "искусственный интеллект"}
   ],
   "category": "regulation",
   "proposed_priority": "high",
   "criteria": {"business_relevance": 3, "event_maturity": 2, "financial_impact": 2, "implementation_effort": 1, "risk_severity": 1, "action_urgency": 1, "state_support_or_accreditation_change": false, "service_or_legal_blocking_risk": false, "strategic_technology_status": false, "binding_legal_precedent": false},
   "importance_score": 10,
   "evidence": [
-    {"claim": "Документ находится на обсуждении", "quote": "установил срок общественного обсуждения"}
+    {"claim": "Закон вступил в силу", "quote": "Дата вступления в силу: 01.09.2026"}
   ],
   "uncertainty": 0.12,
   "needs_review": true,
-  "created_at": "2026-09-01T07:36:00Z"
+  "created_at": "2026-09-06T10:01:00Z"
 }

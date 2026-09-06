@@ -11,9 +11,7 @@ class SourceType(StrEnum):
     RSS = "rss"
     REGULATOR = "regulator"
     TELEGRAM = "telegram"
-    TELEGRAM_ARCHIVE = "telegram_archive"
     FILE = "file"
-    SEED = "seed"
 
 
 class SourceResponse(BaseModel):
@@ -27,7 +25,6 @@ class SourceResponse(BaseModel):
     last_checked_at: datetime | None
     last_success_at: datetime | None
     last_error: str | None
-    is_demo: bool
 
 
 class SourceCreate(BaseModel):
@@ -62,7 +59,7 @@ class SourcePatch(BaseModel):
 
 def validate_source_url(source_type: SourceType, value: str) -> None:
     scheme = value.split(":", 1)[0].casefold()
-    file_types = {SourceType.FILE, SourceType.SEED, SourceType.TELEGRAM_ARCHIVE}
+    file_types = {SourceType.FILE}
     if source_type in file_types and scheme != "file":
         raise ValueError(f"{source_type.value} source must use a file URL")
     if source_type not in file_types and scheme not in {"http", "https"}:
@@ -96,12 +93,3 @@ class CollectionReport(BaseModel):
     content_duplicates: int = Field(ge=0)
     exact_duplicates: int = Field(ge=0)
     semantic_candidates: int = Field(ge=0)
-
-
-class DemoSeedImportReport(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    sources: int = Field(ge=0)
-    publications: int = Field(ge=0)
-    analyses: int = Field(ge=0)
-    duplicates: int = Field(ge=0)

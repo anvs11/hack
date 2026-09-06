@@ -1,7 +1,7 @@
 # Backend: архитектура и проверяемый TODO
 
 Статус: **рабочий план, не protected context**
-Дата: 2026-09-05
+Дата: 2026-09-06
 Ветка: `feat/content-pipeline`
 
 Полная картина системы, включая LLM и фактический frontend:
@@ -9,8 +9,14 @@
 
 Реестр и intake источников: [`SOURCE_INVENTORY.md`](SOURCE_INVENTORY.md).
 
-Этот файл декомпозирует реализацию зафиксированного API v0.4.0. Он не заменяет
+Этот файл декомпозирует реализацию зафиксированного API v0.6.0. Он не заменяет
 `AGENTS.md`, `rules.md`, `README.md` или `contracts/openapi.yaml`.
+
+> Актуализация 2026-09-06: публичный импорт demo seed и runtime-файл
+> `scripts/seed_demo.py` удалены. Синтетика используется только во временной БД
+> автотестов через `tests/seed_test_data.py`; рабочий bootstrap загружает только
+> каталог реальных источников. Ниже старые завершённые пункты A1-A9 сохранены как
+> история реализации и не являются актуальными командами запуска.
 
 ## 1. Источники истины и границы
 
@@ -29,10 +35,9 @@
   `feat/content-pipeline`;
 - контракт содержит 22 HTTP-операции;
 - frontend использует read/write API публикаций, источников, анализов, решений,
-  semantic duplicate review и lifecycle НПА;
-- offline seed содержит 5 источников, 10 публикаций и 10 replay-анализов;
-- `scripts/seed_demo.py` уже создаёт SQLite-таблицы `sources`, `publications` и
-  `analysis_versions` и повторно импортирует данные без дублей;
+  объединённые первоисточники, персональный профиль и lifecycle НПА;
+- тестовые fixtures содержат синтетические источники, публикации и replay-анализы,
+  но загружаются только в изолированную временную SQLite автотестов;
 - `project_analysis/` принадлежит продуктовому контуру и для backend-работ read-only;
 - `README.md`, `rules.md`, `AGENTS.md`, `contracts/`, примеры и seed относятся к
   защищённому контексту в объёме, указанном в `AGENTS.md` и `rules.md`.
@@ -40,6 +45,10 @@
 **Вывод:** базовый вертикальный срез и live intake реализованы; следующий приоритет —
 полнотекстовая загрузка коротких RSS-анонсов, независимая разметка качества AI и
 дублей, ускорение массового backfill embeddings и развёртывание demo-сервера.
+
+Метрики заказчика и воспроизводимый план проверки вынесены в
+[`METRICS_VALIDATION.md`](METRICS_VALIDATION.md). Локальный runtime smoke уже
+измеряет API и collection timestamps; заявлять SLA по историческому backfill нельзя.
 
 **Владение:** по уточнению пользователя весь backend, включая задачи `W`, относится
 к текущему backend-контуру. Владелец frontend отвечает за UI; изменения контракта
@@ -80,8 +89,7 @@ Backend должен принимать материалы минимум из �
 HTTP-точки действующего контракта:
 
 - `POST /api/collections` — запуск всех enabled sources;
-- `POST /api/sources/{source_id}/collections` — запуск одного источника;
-- `POST /api/demo/seed` — полностью offline импорт demo.
+- `POST /api/sources/{source_id}/collections` — запуск одного источника.
 
 Почему adapter не делает AI-анализ: получение данных и интерпретация — разные стадии.
 Один и тот же analyzer должен работать с RSS, Telegram, файлом и регулятором после их
@@ -240,12 +248,13 @@ HTTP-точки:
 B7 реализован во frontend как клиентская производная существующих read API. `/digest`
 загружает все страницы публикаций, истории решений, кейсы с timeline и источники,
 показывает четыре раздела и сохраняет тот же `DigestSnapshot` в JSON или Markdown.
-OpenAPI по-прежнему не содержит digest endpoint; backend не генерирует и не хранит
-версии снимков. Email и Telegram отложены. Полный аудит остальных UI-действий
+OpenAPI не содержит endpoint серверного снимка; backend не хранит версии web-preview.
+При этом v0.6 добавляет настройку и инкрементальную Telegram-доставку новых
+AI-анализов после collection worker. Email отложен. Полный аудит остальных UI-действий
 (изменений источников, связей publication-case, поручений и follow-up actions) потребует
 новой контрактной сущности.
 
-До отдельного context-PR backend digest не создаём. В будущем нужно согласовать:
+Для серверного хранения полного снимка в будущем нужно согласовать:
 
 - входной период;
 - какие priorities/status входят;
@@ -290,7 +299,7 @@ Backend должен обеспечивать:
 | Скрытие публикации | C1 | Soft-hide/restore | Управление в карточке |
 | Решение специалиста | W1 | Есть | Форма, latest decision и история есть |
 | История НПА | W2 | Есть | Timeline, связанные публикации и создание официального события |
-| Проверка semantic duplicates | A8 | Очередь + append-only review | Страница `/duplicates` |
+| Проверка semantic duplicates | A8 | Очередь + append-only review | Внутренний API; подтверждённые источники в одной карточке |
 | Telegram Mini App startup | C5 | Backend проверяет подпись `initData` | Runtime adapter и auth startup |
 
 ## 2. Архитектурное решение
@@ -395,10 +404,9 @@ backend/
 | `regulatory_case_publications` | Связь M:N кейса и публикации | unique `(case_id, publication_id)` |
 | `lifecycle_events` | Append-only история НПА | события не обновляются и не удаляются |
 
-Для совместимости первого среза три существующие таблицы и их `payload_json`
-сохраняются. ORM-модели обязаны открыть SQLite, созданную текущим
-`scripts/seed_demo.py`, без миграции и потери данных. Новые таблицы добавляет
-`create_all()` при старте backend.
+Рабочая SQLite создаётся через `create_all()` и наполняется только реальными
+источниками. Совместимость синтетических fixtures проверяется отдельно во временной
+БД автотестов.
 
 `author_id` и `responsible_user_id` остаются непрозрачными строками: аутентификация
 и таблица пользователей не входят в текущий контракт.
@@ -575,7 +583,7 @@ SQLAlchemy 2.x, конфигурация `HACK_DATABASE_URL`, ORM для тек�
 CLI seed читается через ORM как 5/10/10, два старта сохраняют те же количества.
 Новых API-ручек на этапе A2 не добавлено.
 
-### A3 — offline import
+### A3 — исторический offline import (удалён из runtime)
 
 Зависимости: A2.
 
@@ -587,12 +595,9 @@ CLI seed читается через ORM как 5/10/10, два старта с�
 DoD: второй импорт не меняет количества 5/10/10 и возвращает контрактный
 `DemoSeedImportReport`; сеть и LLM не используются.
 
-Статус 2026-09-04: **подтверждён пользователем**. Общая
-stdlib-реализация вынесена в `scripts/seed_core.py`; каноническая команда
-`python3 scripts/seed_demo.py` сохранена. `POST /api/demo/seed` возвращает
-количества обработанных seed-записей. `duplicates` означает число seed-публикаций,
-чьи `id` уже были в БД до текущего импорта: первый запуск возвращает 0, второй — 10.
-Проверка A1–A3: 10 tests passed; после двух импортов в БД остаётся 5/10/10.
+Статус 2026-09-06: этот ранний этап сохранён только как история разработки.
+Публичная ручка и runtime CLI удалены; `scripts/seed_core.py` вызывается только
+`tests/seed_test_data.py` для временной тестовой БД.
 
 ### A4 — первый вертикальный срез read API
 
@@ -807,19 +812,20 @@ DoD: timeline append-only; current stage и событие обновляютс�
 Frontend B5 показывает текущую стадию и append-only timeline, обогащает связанные
 публикации с fallback по ID и создаёт официальные lifecycle events через этот API.
 
-### W3 — digest
+### W3 — digest и Telegram-доставка
 
 Зависимости: G1.
 
-- [ ] Не создавать endpoint до изменения OpenAPI.
+- [x] Зафиксировать Telegram-настройки в OpenAPI до реализации.
 - [x] Для текущего UI использовать клиентскую производную от публикаций/кейсов.
-- [ ] Если нужен серверный digest, вынести его в отдельный согласованный context-PR.
+- [x] Добавить персональную настройку автоотчёта и защиту от повторной доставки.
 
 DoD: backend не вводит скрытый незафиксированный API.
 
-Статус B7: `/digest` использует только действующие read API, формирует клиентский
-preview по `all_available_data` и поддерживает скачивание JSON/Markdown одного снимка.
-Серверное хранение версий дайджеста, email и Telegram-рассылка не реализованы.
+Статус v0.6: `/digest` использует действующие read API, формирует клиентский preview,
+скачивает JSON/Markdown и отправляет выбранный снимок в Telegram. Worker собирает
+персональный инкрементальный автоотчёт по новым AI-анализам; настройка и факты
+доставки хранятся в backend. Серверное хранение версий web-снимка и email не реализованы.
 Append-only аудит охватывает `PublicationRevision`, `AnalysisVersion`,
 `SpecialistDecision`, `DuplicateReview` и `LifecycleEvent`.
 
@@ -859,7 +865,6 @@ DoD: сквозной сценарий воспроизводится с нул�
 | `createSource` | `POST /api/sources` | A5 | Backend |
 | `updateSource` | `PATCH /api/sources/{source_id}` | A5 | Backend |
 | `collectSource` | `POST /api/sources/{source_id}/collections` | A5/A8 | Backend |
-| `importDemoSeed` | `POST /api/demo/seed` | A3 | Backend |
 | `collectEnabledSources` | `POST /api/collections` | A8 | Backend |
 | `listDuplicateCandidates` | `GET /api/duplicate-candidates` | A8 | Backend |
 | `createDuplicateReview` | `POST /api/duplicate-candidates/{candidate_id}/reviews` | A8 | Backend |
@@ -881,8 +886,8 @@ DoD: сквозной сценарий воспроизводится с нул�
    decisions намеренно остаются runtime append-only данными.
 4. **Факт:** API v0.4.0, prompt и интерфейс используют одни именованные критерии;
    формула и шкала описаны в `docs/IMPORTANCE_SCORING.md`.
-5. **Факт:** digest endpoint в OpenAPI отсутствует; B7 реализован как клиентская
-   производная с JSON/Markdown preview и download без серверного хранения версий.
+5. **Факт:** endpoint серверного snapshot отсутствует; web-preview остаётся клиентской
+   производной, а Telegram auto-digest хранит настройки и факты доставки анализов.
 6. **Решено в B4:** матрица lifecycle-переходов зафиксирована в
    protected context и проверяется чистой функцией backend.
 7. **Факт:** `Publication` содержит tags, поиск их индексирует, ручное редактирование
@@ -919,7 +924,7 @@ python3 -m json.tool data/seed/sources.json >/dev/null
 python3 -m json.tool data/seed/publications.json >/dev/null
 python3 -m json.tool data/seed/replay-analyses.json >/dev/null
 ruby -e "require 'yaml'; YAML.load_file('contracts/openapi.yaml')"
-python3 scripts/seed_demo.py --db /tmp/hack-demo.sqlite3
+python3 tests/seed_test_data.py --db /tmp/hack-test.sqlite3
 python3 -m pytest backend/tests
 ```
 

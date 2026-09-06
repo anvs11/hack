@@ -10,13 +10,14 @@ from sqlalchemy.orm import Session
 from backend.app.db import build_engine
 from backend.app.main import create_app
 from backend.app.modules.analysis.models import AnalysisVersion
+from backend.tests.seed import seed_test_database
 
 
 @pytest.fixture
 def client_with_seed(tmp_path: Path) -> Generator[tuple[TestClient, Engine], None, None]:
     engine = build_engine(f"sqlite:///{tmp_path / 'read-api.sqlite3'}")
+    seed_test_database(engine)
     with TestClient(create_app(database_engine=engine)) as client:
-        assert client.post("/api/demo/seed").status_code == 200
         yield client, engine
     engine.dispose()
 
@@ -53,7 +54,6 @@ def test_list_sources_matches_seed_contract(
         "last_checked_at": None,
         "last_success_at": None,
         "last_error": None,
-        "is_demo": True,
     }
 
 
@@ -69,19 +69,30 @@ def test_list_publications_has_contract_shape_and_sorting(
     assert response.json()["limit"] == 20
     assert response.json()["offset"] == 0
     assert _ids(response) == [
-        "pub-007",
-        "pub-002",
-        "pub-001",
+        "pub-010",
         "pub-009",
         "pub-008",
+        "pub-007",
         "pub-006",
         "pub-005",
         "pub-004",
-        "pub-010",
         "pub-003",
+        "pub-002",
+        "pub-001",
     ]
     first = response.json()["items"][0]
-    assert first["publication"]["latest_analysis_id"] == "analysis-007"
+    assert first["publication"]["latest_analysis_id"] == "analysis-010"
+    assert first["publication"]["source_references"] == [
+        {
+            "source_id": "source-telegram-archive",
+            "external_id": "demo-tg-010",
+            "title": first["publication"]["title"],
+            "original_url": first["publication"]["original_url"],
+            "published_at": first["publication"]["published_at"],
+            "collected_at": first["publication"]["collected_at"],
+            "is_primary": True,
+        }
+    ]
     assert first["latest_analysis"]["version"] == 1
     assert first["latest_decision"] is None
 
@@ -94,16 +105,16 @@ def test_list_publications_has_contract_shape_and_sorting(
             ["pub-006"],
         ),
         ({"source_id": "source-media-rss-1"}, ["pub-008", "pub-003"]),
-        ({"source_type": "telegram_archive"}, ["pub-005", "pub-010"]),
+        ({"source_type": "telegram"}, ["pub-010", "pub-005"]),
         (
             {"published_from": "2026-09-01T11:00:00Z"},
-            ["pub-009", "pub-008", "pub-010"],
+            ["pub-010", "pub-009", "pub-008"],
         ),
         (
             {"published_to": "2026-09-01T08:00:00Z"},
             ["pub-002", "pub-001"],
         ),
-        ({"category": "trend"}, ["pub-004", "pub-010", "pub-003"]),
+        ({"category": "trend"}, ["pub-010", "pub-004", "pub-003"]),
         ({"proposed_priority": "high"}, ["pub-007", "pub-002", "pub-001"]),
         ({"needs_review": "false"}, ["pub-009", "pub-004", "pub-003"]),
         (
@@ -137,8 +148,8 @@ def test_list_publications_paginates_after_sorting(
     second = client.get("/api/publications", params={"limit": 2, "offset": 2})
 
     assert first.json()["total"] == 10
-    assert _ids(first) == ["pub-007", "pub-002"]
-    assert _ids(second) == ["pub-001", "pub-009"]
+    assert _ids(first) == ["pub-010", "pub-009"]
+    assert _ids(second) == ["pub-008", "pub-007"]
 
 
 @pytest.mark.parametrize(

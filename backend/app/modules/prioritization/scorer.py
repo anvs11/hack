@@ -29,15 +29,16 @@ class ScoringResult:
     has_unknown_criterion: bool
 
 
-def score_criteria(criteria: Criteria) -> ScoringResult:
+def score_criteria(
+    criteria: Criteria,
+    fallback_priority: Priority = Priority.UNKNOWN,
+) -> ScoringResult:
     """Calculate a reproducible AI proposal without making a human decision."""
     values = [getattr(criteria, field) for field in CRITERIA_FIELDS]
     has_unknown_criterion = any(value is None for value in values)
     importance_score = None if has_unknown_criterion else sum(values)
     proposed_priority = (
-        Priority.UNKNOWN
-        if importance_score is None
-        else _base_priority(importance_score)
+        fallback_priority if importance_score is None else _base_priority(importance_score)
     )
     has_hard_signal = any(getattr(criteria, field) for field in HARD_SIGNAL_FIELDS)
     if has_hard_signal and proposed_priority in {

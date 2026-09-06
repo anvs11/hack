@@ -62,7 +62,10 @@ test('URL filters, last day, pagination, Back/Forward and scrolled result restor
   const before = await page.evaluate(() => scrollY)
   const returnUrl = page.url()
   await card.getByRole('link', { name: 'Открыть анализ' }).click()
-  await expect(page.getByRole('button', { name: /В отч/ })).toBeVisible()
+  await expect(page).toHaveURL(/\/publications\//)
+  await expect(
+    page.locator('.publication-workspace').getByRole('button', { name: /В отч/ }),
+  ).toBeVisible()
   await page.getByRole('link', { name: 'Вернуться к результатам' }).click()
   await expect(page).toHaveURL(returnUrl)
   await expect.poll(() => page.evaluate(() => scrollY)).toBeCloseTo(before, -1)
@@ -148,12 +151,12 @@ test('manual report: deduplication, order, reload, new AI snapshot, downloads an
     ).detail.latest_analysis.id
   })
   await first.getByRole('link', { name: title, exact: true }).click()
-  await page
-    .getByRole('button', { name: 'Повторить AI-анализ', exact: true })
-    .click()
-  await expect(
-    page.getByText(/AI-анализ v\d+ сохранён в истории/),
-  ).toBeVisible()
+  const analysisResponse = await page.request.post(
+    'http://127.0.0.1:8000/api/publications/pub-001/analyses',
+    { data: { analyzer: 'replay' } },
+  )
+  expect(analysisResponse.status()).toBe(201)
+  await page.reload()
   await expect(
     page.getByText('Решение относится к предыдущей версии анализа', {
       exact: false,
@@ -269,7 +272,7 @@ test('map keyboard navigation, linked card, context loss and 2D fallback', async
   ).toBeDisabled()
 })
 
-test('research, sources, cases, similar publications and automatic summary remain responsive', async ({
+test('research, sources, cases and automatic summary remain responsive', async ({
   page,
 }) => {
   const errors: string[] = []
@@ -286,7 +289,6 @@ test('research, sources, cases, similar publications and automatic summary remai
       '/sources',
       '/regulatory-cases',
       '/regulatory-cases/case-001',
-      '/duplicates',
       '/digest?tab=auto',
     ]) {
       await page.goto(route)

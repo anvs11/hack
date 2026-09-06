@@ -80,10 +80,11 @@ def test_only_implemented_api_routes_are_exposed() -> None:
     assert api_paths == {
         "/api/collections",
         "/api/auth/telegram",
-        "/api/demo/seed",
         "/api/duplicate-candidates",
         "/api/duplicate-candidates/{candidate_id}/reviews",
         "/api/health",
+        "/api/me",
+        "/api/me/telegram-digest-settings",
         "/api/publications",
         "/api/publications/{publication_id}",
         "/api/publications/{publication_id}/analyses",
@@ -96,11 +97,9 @@ def test_only_implemented_api_routes_are_exposed() -> None:
         "/api/sources",
         "/api/sources/{source_id}",
         "/api/sources/{source_id}/collections",
+        "/api/telegram/report-deliveries",
     }
     assert schema["paths"]["/api/health"]["get"]["operationId"] == "getHealth"
-    assert schema["paths"]["/api/demo/seed"]["post"]["operationId"] == (
-        "importDemoSeed"
-    )
     assert schema["paths"]["/api/collections"]["post"]["operationId"] == (
         "collectEnabledSources"
     )

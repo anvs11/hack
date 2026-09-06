@@ -13,13 +13,14 @@ from backend.app.main import create_app
 from backend.app.modules.sources import service
 from backend.app.modules.sources.models import Source
 from backend.app.modules.sources.schemas import SourceCreate
+from backend.tests.seed import seed_test_database
 
 
 @pytest.fixture
 def client_with_seed(tmp_path: Path) -> Generator[tuple[TestClient, Engine], None, None]:
     engine = build_engine(f"sqlite:///{tmp_path / 'source-write.sqlite3'}")
+    seed_test_database(engine)
     with TestClient(create_app(database_engine=engine)) as client:
-        assert client.post("/api/demo/seed").status_code == 200
         yield client, engine
     engine.dispose()
 
@@ -54,7 +55,6 @@ def test_create_source_persists_contract_response(
         "last_checked_at": None,
         "last_success_at": None,
         "last_error": None,
-        "is_demo": False,
     }
     sources = client.get("/api/sources").json()
     assert len(sources) == 6
@@ -108,7 +108,6 @@ def test_update_source_changes_only_contract_fields(
     assert updated["url"] == "https://example.org/updated.xml"
     assert updated["enabled"] is False
     assert updated["type"] == "rss"
-    assert updated["is_demo"] is False
 
 
 @pytest.mark.parametrize("body", [{}, {"name": None}, {"type": "telegram"}])

@@ -1,6 +1,6 @@
 """Storage models for regulatory cases, publication links and lifecycle events."""
 
-from sqlalchemy import ForeignKey, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Integer, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.app.db import Base
@@ -14,6 +14,13 @@ class RegulatoryCase(Base):
     registration_number: Mapped[str] = mapped_column(Text, nullable=False)
     current_stage: Mapped[str] = mapped_column(Text, nullable=False)
     responsible_user_id: Mapped[str] = mapped_column(Text, nullable=False)
+    origin: Mapped[str] = mapped_column(Text, nullable=False, default="manual")
+    needs_review: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    identifier_key: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        unique=True,
+    )
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 

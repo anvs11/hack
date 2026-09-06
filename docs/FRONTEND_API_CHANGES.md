@@ -1,10 +1,33 @@
-# Изменения frontend из-за API v0.4.0
+# Изменения frontend из-за API v0.6.0
 
 Дата: 2026-09-05
 Область: синхронизация frontend с backend-контрактом и необходимые пользовательские
 действия. `project_analysis/` не изменялся.
 
-## Добавлено в v0.3–v0.3.1
+## Добавлено в v0.6.0
+
+| Возможность | Frontend | Backend API |
+| --- | --- | --- |
+| Два режима без промежуточного | `compact/expert` — «Кратко/Подробно» | `GET/PATCH /api/me` |
+| Автоотчёты Telegram | Включение и минимальный приоритет | `GET/PATCH /api/me/telegram-digest-settings` |
+| Отправка автоматической сводки | Кнопка на вкладке сводки | `POST /api/telegram/report-deliveries` |
+
+## Добавлено в v0.5.0
+
+| Возможность | Frontend | Backend API |
+| --- | --- | --- |
+| Личный режим | Первоначальный переключатель `compact/standard/expert`; `standard` удалён в v0.6 | `GET/PATCH /api/me` |
+| Стартовые фильтры | Сохранить текущую выборку | `PATCH /api/me` |
+| Одна карточка события | Список первоисточников в detail | `Publication.source_references` |
+| Отправка отчёта | Кнопка внутри Telegram Mini App | `POST /api/telegram/report-deliveries` |
+| Автообновление | Повторный GET ленты через 15 минут | worker собирает данные раз в 15 минут |
+
+Отдельный пользовательский маршрут `/duplicates` удалён. Техническая очередь и
+append-only review остаются в API. Открытая карточка запрашивает относящиеся к ней
+пары через `publication_id`, а подтверждённый дубль складывает ссылку в каноническую
+публикацию.
+
+## Добавлено в v0.3–v0.4
 
 | Возможность | Frontend | Backend API |
 | --- | --- | --- |
@@ -12,9 +35,8 @@
 | Исправить title/tags | Редактор карточки | `PATCH /api/publications/{id}` |
 | Скрыть/вернуть | Тот же редактор | append-only `PublicationRevision` |
 | Новый AI-анализ | Кнопка в карточке | `POST /api/publications/{id}/analyses` |
-| Очередь похожих пар | Новый маршрут `/duplicates` | `GET /api/duplicate-candidates` |
-| Вердикт по паре | Три явных действия + комментарий | `POST /api/duplicate-candidates/{id}/reviews` |
-| Пагинация похожих пар | По 50 карточек + `Показать ещё` | `status`, `limit`, `offset` |
+| Совпадение в карточке | Последовательный блок с тремя действиями | `GET /api/duplicate-candidates?publication_id=...` |
+| Вердикт по паре | Объединить источники / оставить связанными / разные события | `POST /api/duplicate-candidates/{id}/reviews` |
 | Фильтр периода | Два date-поля с inclusive границами дня | `published_from`, `published_to` |
 | Прозрачный collection report | Раздельно «уже были» и «совпал текст» | `already_seen`, `content_duplicates` |
 | Общий live-сбор | Кнопка `Собрать live · N` и агрегированный отчёт | `POST /api/collections` |
@@ -36,9 +58,9 @@
 Полная формула и значения полей описаны в `docs/IMPORTANCE_SCORING.md`. Старые ключи
 поддерживаются backend только для чтения уже сохранённой локальной БД.
 
-Верхнее demo-меню больше не содержит жёсткую ссылку на `pub-001`; вместо неё есть
-рабочий раздел `Дубли`. История metadata, AI, решений специалиста и duplicate
-verdicts не затирается.
+Верхнее demo-меню больше не содержит жёсткую ссылку на `pub-001`. В v0.5 из
+пользовательской навигации также удалён технический раздел дублей. История metadata,
+AI, решений специалиста и duplicate verdicts не затирается.
 
 ## Что изменено
 
@@ -58,7 +80,7 @@ verdicts не затирается.
 | `POST /api/publications/{id}/reviews` | `POST /api/publications/{id}/decisions` |
 | `POST /api/sources/{id}/refresh` | `POST /api/sources/{id}/collections` |
 | `POST /api/collect/run` | `POST /api/collections` |
-| `POST /api/import/seed` | `POST /api/demo/seed` |
+| `POST /api/import/seed` | Удалён: синтетические данные доступны только автотестам |
 | `POST /api/regulatory-cases/{id}/events` | `POST /api/regulatory-cases/{id}/lifecycle-events` |
 
 Связь публикации с кейсом теперь задаётся идемпотентно:
@@ -77,8 +99,8 @@ verdicts не затирается.
   browser runtime.
 - `src/pages/FeedPage.tsx` — ручное добавление публикации;
 - `src/pages/PublicationPage.tsx` — metadata revisions, hide/restore и запуск анализа;
-- `src/pages/DuplicatesPage.tsx` — human-in-the-loop разбор semantic candidates;
-  фильтр `Все` явно отправляет `status=all`, очередь догружается по 50 пар;
+- удалённый `src/pages/DuplicatesPage.tsx` был временным human-in-the-loop экраном;
+  API очереди сохранён, но пользователь видит один материал и все его источники;
 - `src/pages/SourcesPage.tsx` — один источник и все live-источники можно запустить
   вручную; demo-источники не входят в общий сетевой сбор;
 - `src/shared/telegram/TelegramIntegration.tsx` — backend handshake raw `initData`.

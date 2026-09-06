@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from backend.app.db import get_session
+from backend.app.errors import ApiError
 from backend.app.modules.decisions.schemas import SpecialistDecisionCreate
 from backend.app.modules.decisions.service import (
     create_specialist_decision,
@@ -15,6 +16,8 @@ from backend.app.modules.publications.schemas import (
     PublicationHistory,
     SpecialistDecision,
 )
+from backend.app.modules.users.router import current_identity
+from backend.app.modules.users.service import UserIdentity, get_or_create_profile
 
 
 router = APIRouter()
@@ -30,8 +33,20 @@ def create_decision(
     publication_id: str,
     request: SpecialistDecisionCreate,
     session: Annotated[Session, Depends(get_session)],
+    identity: Annotated[UserIdentity, Depends(current_identity)],
 ) -> SpecialistDecision:
-    return create_specialist_decision(session, publication_id, request)
+    profile = get_or_create_profile(session, identity)
+    if not profile.can_confirm_analysis:
+        raise ApiError(
+            status_code=403,
+            code="analysis_confirmation_forbidden",
+            message="This role cannot confirm AI analysis",
+        )
+    return create_specialist_decision(
+        session,
+        publication_id,
+        request.model_copy(update={"author_id": identity.id}),
+    )
 
 
 @router.get(

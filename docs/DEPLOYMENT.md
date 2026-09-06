@@ -8,9 +8,9 @@
 
 | Сервис | Назначение |
 | --- | --- |
-| `catalog` | Один раз создаёт схему, demo seed и каталог 13 live-источников |
+| `catalog` | Один раз создаёт схему и каталог 13 реальных сетевых источников |
 | `backend` | FastAPI и общая SQLite в Docker volume |
-| `collector` | Раз в 30 минут опрашивает enabled RSS и публичные Telegram preview |
+| `collector` | Раз в 15 минут собирает enabled-источники и анализирует новые материалы |
 | `web` | Caddy, React build, HTTPS и reverse proxy `/api/*` |
 
 SQLite работает в WAL mode с `busy_timeout=5000`, поэтому backend и один collector
@@ -41,6 +41,10 @@ API credential хранится только в некоммитящемся ф�
 endpoint анализа возвращает контролируемую ошибку, а остальные функции продолжают
 работать.
 
+Public Compose устанавливает `HACK_ALLOW_LOCAL_IDENTITY=0`. Поэтому профиль и
+подтверждение AI требуют подписанный Telegram launch data; локальная identity
+не становится обходом прав на публичном hostname.
+
 Semantic backfill запускается отдельно локально или на более мощной машине. Векторы
 сохраняются пакетами в SQLite, поэтому прерванный запуск продолжит только
 недостающие публикации:
@@ -49,8 +53,8 @@ Semantic backfill запускается отдельно локально ил�
 .venv/bin/python scripts/backfill_duplicate_candidates.py --limit 40
 ```
 
-Production threshold отсутствует: пары сохраняются в `/duplicates` для решения
-человека.
+Production threshold отсутствует: semantic-пары сохраняются для решения человека,
+а подтверждённые дубли отображаются как дополнительные ссылки одного события.
 
 ## Подготовка сервера
 

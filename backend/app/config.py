@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_DATABASE_PATH = REPOSITORY_ROOT / ".local" / "demo.sqlite3"
+DEFAULT_DATABASE_PATH = REPOSITORY_ROOT / ".local" / "live.sqlite3"
 DATABASE_URL_ENV = "HACK_DATABASE_URL"
 DEFAULT_HF_CACHE_PATH = Path.home() / ".cache" / "hack-ai-product" / "huggingface"
 HF_CACHE_DIR_ENV = "HACK_HF_CACHE_DIR"
@@ -37,10 +37,15 @@ TELEGRAM_BOT_TOKEN_ENV = "HACK_TELEGRAM_BOT_TOKEN"
 TELEGRAM_BOT_TOKEN_FILE_ENV = "HACK_TELEGRAM_BOT_TOKEN_FILE"
 TELEGRAM_AUTH_MAX_AGE_ENV = "HACK_TELEGRAM_AUTH_MAX_AGE_SECONDS"
 DEFAULT_TELEGRAM_AUTH_MAX_AGE = 86_400
+LOCAL_IDENTITY_ENABLED_ENV = "HACK_ALLOW_LOCAL_IDENTITY"
+AUTO_ANALYSIS_BATCH_SIZE_ENV = "HACK_AUTO_ANALYSIS_BATCH_SIZE"
+AUTO_ANALYSIS_MIN_CONTENT_CHARS_ENV = "HACK_AUTO_ANALYSIS_MIN_CONTENT_CHARS"
+DEFAULT_AUTO_ANALYSIS_BATCH_SIZE = 20
+DEFAULT_AUTO_ANALYSIS_MIN_CONTENT_CHARS = 200
 
 
 def get_database_url() -> str:
-    """Return an override URL or the local demo SQLite URL."""
+    """Return an override URL or the local working SQLite URL."""
 
     return os.getenv(DATABASE_URL_ENV, f"sqlite:///{DEFAULT_DATABASE_PATH}")
 
@@ -129,6 +134,28 @@ def get_telegram_bot_token() -> str | None:
 
 def get_telegram_auth_max_age() -> int:
     return _positive_int(TELEGRAM_AUTH_MAX_AGE_ENV, DEFAULT_TELEGRAM_AUTH_MAX_AGE)
+
+
+def local_identity_enabled() -> bool:
+    return os.getenv(LOCAL_IDENTITY_ENABLED_ENV, "1").casefold() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def get_auto_analysis_batch_size() -> int:
+    return _positive_int(
+        AUTO_ANALYSIS_BATCH_SIZE_ENV,
+        DEFAULT_AUTO_ANALYSIS_BATCH_SIZE,
+    )
+
+
+def get_auto_analysis_min_content_chars() -> int:
+    return _positive_int(
+        AUTO_ANALYSIS_MIN_CONTENT_CHARS_ENV,
+        DEFAULT_AUTO_ANALYSIS_MIN_CONTENT_CHARS,
+    )
 
 
 def _positive_int(name: str, default: int) -> int:

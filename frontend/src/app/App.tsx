@@ -1,12 +1,23 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { TelegramIntegration } from '../shared/telegram/TelegramIntegration'
-import { ReportProvider, useReport, isDemoMode } from '../shared/ReportStore'
+import { ReportProvider, useReport } from '../shared/ReportStore'
+import { api } from '../shared/api/client'
+import type { UserProfile } from '../shared/api/types'
+
+type ViewMode = 'compact' | 'expert'
+
+const viewModes: { value: ViewMode; label: string }[] = [
+  { value: 'compact', label: 'Кратко' },
+  { value: 'expert', label: 'Подробно' },
+]
+
+const viewModeStorageKey = 'regradar:view-mode'
+
 const navigation = [
   { to: '/feed', label: 'Мониторинг', icon: 'radar' },
   { to: '/digest', label: 'Отчёт', icon: 'report' },
-  { to: '/regulatory-cases', label: 'Кейсы НПА', icon: 'cases' },
-  { to: '/duplicates', label: 'Похожие публикации', icon: 'copy' },
+  { to: '/regulatory-cases', label: 'Нормативные документы', icon: 'cases' },
   { to: '/sources', label: 'Источники', icon: 'sources' },
 ]
 function Icon({ name }: { name: string }) {
@@ -37,11 +48,6 @@ function Icon({ name }: { name: string }) {
         <>
           <path d="M3 6h7l2 2h9v12H3zM9 6V3h6v5M7 13h10M7 16h6" />
         </>
-      ) : name === 'copy' ? (
-        <>
-          <rect x="8" y="8" width="12" height="13" rx="2" />
-          <path d="M15 8V3H3v13h5" />
-        </>
       ) : (
         <>
           <path d="M5 12a7 7 0 0 1 7 7M5 5a14 14 0 0 1 14 14" />
@@ -59,6 +65,37 @@ export function App() {
   )
 }
 function Workspace() {
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    try {
+      const saved = window.localStorage.getItem(viewModeStorageKey)
+      return viewModes.some(({ value }) => value === saved)
+        ? saved as ViewMode
+        : 'expert'
+    } catch {
+      return 'expert'
+    }
+  })
+
+  useEffect(() => {
+    const controller = new AbortController()
+    api.getMyProfile(controller.signal).then((loaded) => {
+      setProfile(loaded)
+      setViewMode(loaded.view_mode)
+    }).catch(() => {
+      // Local preference remains available if the profile endpoint is offline.
+    })
+    return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(viewModeStorageKey, viewMode)
+    } catch {
+      // The selected mode still works for the current tab without persistence.
+    }
+  }, [viewMode])
+
   useEffect(() => {
     const previous = window.history.scrollRestoration
     window.history.scrollRestoration = 'manual'
@@ -77,7 +114,7 @@ function Workspace() {
       window.scrollTo({ top: 0, behavior: 'instant' })
   }, [section, location.pathname])
   return (
-    <div className="app-shell">
+    <div className={`app-shell view-mode-${viewMode}`}>
       <a className="skip-link" href="#main-content">
         К содержанию
       </a>
@@ -95,8 +132,8 @@ function Workspace() {
           </strong>
         </NavLink>
         <div className="workspace-label">
-          <span>PR / GR</span>
-          <span>Рабочее пространство</span>
+          <span>Мониторинг</span>
+          <span>Сигналы и решения</span>
         </div>
         <nav className="primary-nav" aria-label="Основные разделы">
           {navigation.map((n) => (
@@ -115,15 +152,11 @@ function Workspace() {
         </nav>
         <div className="sidebar-bottom">
           <span className="local-avatar" aria-hidden="true">
-            GR
+            {(profile?.role ?? 'gr').toUpperCase()}
           </span>
           <div>
-            <strong>Рабочий обзор</strong>
-            <span>
-              {isDemoMode
-                ? 'Демонстрационные данные'
-                : 'Данные подключённого API'}
-            </span>
+            <strong>{profile?.name ?? 'Рабочий обзор'}</strong>
+            <span>{profile ? roleLabel(profile.role) : 'Личная очередь'}</span>
           </div>
         </div>
       </aside>
@@ -133,10 +166,25 @@ function Workspace() {
             Рабочее пространство <span>/</span> <strong>{section}</strong>
           </div>
           <div className="header-actions">
-            <span className="mode-label">
-              <span aria-hidden="true" className="status-dot" />
-              {isDemoMode ? 'Demo · MSW' : 'Режим API'}
-            </span>
+            <div className="view-mode-switcher" role="group" aria-label="Режим отображения">
+              {viewModes.map(({ value, label }) => (
+                <button
+                  aria-pressed={viewMode === value}
+                  key={value}
+                  onClick={() => {
+                    setViewMode(value)
+                    void api.updateMyPreferences({ view_mode: value }).then(
+                      setProfile,
+                    ).catch(() => {
+                      // The local mode still applies while backend is unavailable.
+                    })
+                  }}
+                  type="button"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <TelegramIntegration />
             <NavLink className="header-report" to="/digest">
               <Icon name="report" />
@@ -155,4 +203,10 @@ function Workspace() {
       </div>
     </div>
   )
+}
+
+function roleLabel(role: UserProfile['role']) {
+  if (role === 'manager') return 'Руководитель'
+  if (role === 'pr') return 'PR-специалист'
+  return 'GR-специалист'
 }

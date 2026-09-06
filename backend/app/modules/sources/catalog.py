@@ -33,7 +33,6 @@ def sync_source_catalog(session: Session, path: Path) -> tuple[int, int]:
                     "last_checked_at": None,
                     "last_success_at": None,
                     "last_error": None,
-                    "is_demo": False,
                 }
                 session.add(
                     Source(
@@ -58,7 +57,6 @@ def sync_source_catalog(session: Session, path: Path) -> tuple[int, int]:
             row.url = str(source.url)
             row.enabled = int(source.enabled)
             payload.update(source.model_dump(mode="json"))
-            payload["is_demo"] = False
             row.payload_json = json.dumps(
                 payload,
                 ensure_ascii=False,

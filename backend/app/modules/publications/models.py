@@ -41,3 +41,27 @@ class PublicationRevision(Base):
     is_hidden: Mapped[int] = mapped_column(Integer, nullable=False)
     author_id: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class PublicationSourceReference(Base):
+    """Additional source URL folded into one canonical monitoring card."""
+
+    __tablename__ = "publication_source_references"
+    __table_args__ = (UniqueConstraint("publication_id", "original_url"),)
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    publication_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("publications.id"),
+        nullable=False,
+    )
+    source_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("sources.id"),
+        nullable=False,
+    )
+    external_id: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    original_url: Mapped[str] = mapped_column(Text, nullable=False)
+    published_at: Mapped[str] = mapped_column(Text, nullable=False)
+    collected_at: Mapped[str] = mapped_column(Text, nullable=False)

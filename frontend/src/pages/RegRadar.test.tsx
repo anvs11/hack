@@ -25,7 +25,8 @@ describe('RegRadar workflow', () => {
     try {
       feed('/feed?visibility=all&limit=2')
       const title = await screen.findByRole('link', {
-        name: publicationDetails[0].publication.title,
+        name: publicationDetails.find((d) => d.publication.id === 'pub-009')!
+          .publication.title,
       })
       await waitFor(() => expect(scrollTo).toHaveBeenCalled())
       Object.defineProperty(window, 'scrollY', { configurable: true, value: 812 })
@@ -58,7 +59,7 @@ describe('RegRadar workflow', () => {
   it('restores pagination on Back and resets offset on filter changes', async () => {
     const router = feed('/feed?limit=2&offset=2')
     await screen.findByRole('link', {
-      name: publicationDetails.find((d) => d.publication.id === 'pub-008')!
+      name: publicationDetails.find((d) => d.publication.id === 'pub-005')!
         .publication.title,
     })
     fireEvent.click(screen.getByRole('button', { name: 'Далее →' }))
@@ -106,7 +107,8 @@ describe('RegRadar workflow', () => {
   it('keeps a report across routes and does not let automatic summary populate it', async () => {
     const router = feed()
     const title = await screen.findByRole('link', {
-      name: publicationDetails[0].publication.title,
+      name: publicationDetails.find((d) => d.publication.id === 'pub-009')!
+        .publication.title,
     })
     fireEvent.click(
       within(title.closest('article')!).getByRole('button', {
@@ -121,7 +123,7 @@ describe('RegRadar workflow', () => {
       target: { value: 'Контекст для встречи' },
     })
     await act(() => router.navigate('/digest?tab=auto'))
-    await screen.findByText('all_available_data')
+    await screen.findByText('Сформирован')
     await act(() => router.navigate('/digest'))
     expect(screen.getByLabelText('Комментарий для менеджера')).toHaveValue(
       'Контекст для встречи',

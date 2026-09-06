@@ -5,7 +5,7 @@ import time
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from backend.app.modules.publications.service import get_publication
@@ -29,10 +29,18 @@ def list_duplicate_candidates(
     session: Session,
     *,
     status: str | None,
+    publication_id: str | None = None,
     limit: int,
     offset: int,
 ) -> DuplicateCandidateList:
     where = [] if status is None else [DuplicateCandidate.status == status]
+    if publication_id:
+        where.append(
+            or_(
+                DuplicateCandidate.publication_id == publication_id,
+                DuplicateCandidate.candidate_publication_id == publication_id,
+            )
+        )
     total = session.scalar(
         select(func.count()).select_from(DuplicateCandidate).where(*where)
     ) or 0

@@ -148,7 +148,7 @@ describe('versioned local report', () => {
     expect(md).toContain('RegRadar')
     expect(md).toContain('Нет решения специалиста')
     expect(md).toContain('Рассмотреть на встрече')
-    expect(md).toContain('Важность: Нет данных')
+    expect(md).not.toContain('Важность:')
     expect(md).not.toContain(publicationDetails[1].publication.title)
   })
 })

@@ -10,7 +10,9 @@ import { fileURLToPath } from 'node:url'
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const frontendRoot = path.join(repositoryRoot, 'frontend')
 const pythonPath = path.join(repositoryRoot, '.venv', 'bin', 'python')
-const playwrightPath = path.join(frontendRoot, 'node_modules', '.bin', 'playwright')
+const nodePath = process.execPath
+const vitePath = path.join(frontendRoot, 'node_modules', 'vite', 'bin', 'vite.js')
+const playwrightPath = path.join(frontendRoot, 'node_modules', '@playwright', 'test', 'cli.js')
 const configPath = path.join(frontendRoot, 'playwright.config.ts')
 const host = '127.0.0.1'
 const backendPort = 8000
@@ -126,15 +128,16 @@ let exitCode = 1
 
 try {
   await access(pythonPath, constants.X_OK)
-  await access(playwrightPath, constants.X_OK)
+  await access(vitePath, constants.R_OK)
+  await access(playwrightPath, constants.R_OK)
   await Promise.all([assertPortAvailable(backendPort), assertPortAvailable(frontendPort)])
 
   temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'hack-b8-e2e-'))
-  const databasePath = path.join(temporaryRoot, 'demo.sqlite3')
+  const databasePath = path.join(temporaryRoot, 'test.sqlite3')
   const databaseUrl = `sqlite:///${databasePath}`
 
   const seedCode = await run(pythonPath, [
-    path.join(repositoryRoot, 'scripts', 'seed_demo.py'),
+    path.join(repositoryRoot, 'tests', 'seed_test_data.py'),
     '--db',
     databasePath,
   ])
@@ -158,10 +161,8 @@ try {
     async (response) => JSON.stringify(await response.json()) === '{"status":"ok"}',
   )
 
-  const frontend = start('npm', [
-    'run',
-    'dev',
-    '--',
+  const frontend = start(nodePath, [
+    vitePath,
     '--host',
     host,
     '--port',
@@ -182,7 +183,7 @@ try {
 
   const playwrightArgs = ['test', '--config', configPath]
   if (process.argv.includes('--headed')) playwrightArgs.push('--headed')
-  exitCode = await run(playwrightPath, playwrightArgs, {
+  exitCode = await run(nodePath, [playwrightPath, ...playwrightArgs], {
     cwd: frontendRoot,
     env: {
       ...process.env,

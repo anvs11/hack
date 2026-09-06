@@ -14,28 +14,28 @@ export function RegulatoryCasesPage() {
       <header className="workspace-heading">
         <div>
           <p className="eyebrow">Регуляторная повестка</p>
-          <h1>Кейсы НПА</h1>
+          <h1>Нормативные документы</h1>
         </div>
       </header>
       {state.status === 'loading' && (
         <PageState
           kind="loading"
-          title="Загружаем кейсы"
-          message="Получаем список НПА."
+          title="Загружаем досье"
+          message="Получаем список нормативных документов и инициатив."
         />
       )}
       {state.status === 'error' && (
         <PageState
           kind="error"
-          title="Кейсы не загрузились"
+          title="Досье не загрузились"
           message={state.error.message}
         />
       )}
       {state.data?.length === 0 && (
         <PageState
           kind="empty"
-          title="Кейсов пока нет"
-          message="В подключённом источнике данных нет кейсов НПА."
+          title="Нормативных документов пока нет"
+          message="В подключённых источниках пока нет досье нормативных документов и инициатив."
         />
       )}
       <div className="case-list">
@@ -49,6 +49,9 @@ export function RegulatoryCasesPage() {
             </h2>
             <div className="tag-row">
               <span className="tag">{digestLabels.stage[c.current_stage]}</span>
+              {c.needs_review && (
+                <span className="tag case-review-tag">Требует проверки</span>
+              )}
               <span className="muted">
                 {c.related_publication_ids.length} связанных публикаций ·
                 Обновлено {formatDate(c.updated_at)}

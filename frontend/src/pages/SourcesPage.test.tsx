@@ -18,7 +18,9 @@ function renderSources() {
 }
 
 async function sourceCard(name: string) {
-  const heading = await screen.findByRole('heading', { name })
+  const heading = await screen.findByRole('heading', {
+    name: name.replace(/\s*\(demo\)\s*$/i, ''),
+  })
   const card = heading.closest('article')
   expect(card).not.toBeNull()
   return card as HTMLElement
@@ -38,7 +40,7 @@ describe('sources list states', () => {
   it('renders the source details and active counter', async () => {
     renderSources()
 
-    expect(await screen.findByText('Портал проектов НПА (demo)')).toBeInTheDocument()
+    expect(await screen.findByText('Портал проектов НПА')).toBeInTheDocument()
     expect(screen.getByText('5')).toBeInTheDocument()
     expect(screen.getAllByText('Активен')).toHaveLength(5)
     expect(screen.getAllByText('Сайт регулятора', { exact: false })).toHaveLength(2)
@@ -113,11 +115,10 @@ describe('source create and edit dialogs', () => {
         last_checked_at: null,
         last_success_at: null,
         last_error: null,
-        is_demo: false,
       } satisfies Source, { status: 201 })
     }))
     renderSources()
-    await screen.findByText(sources[0].name)
+    await screen.findByText(sources[0].name.replace(/\s*\(demo\)\s*$/i, ''))
     fireEvent.click(screen.getByRole('button', { name: 'Добавить источник' }))
     fillCreateForm()
 
@@ -213,7 +214,6 @@ describe('source card actions', () => {
       ...sources[0],
       id: 'source-live-rss',
       name: 'Live RSS',
-      is_demo: false,
     } satisfies Source
     const report = {
       status: 'completed',
@@ -248,7 +248,7 @@ describe('source card actions', () => {
     )
     renderSources()
 
-    const collectAll = await screen.findByRole('button', { name: 'Собрать live · 1' })
+    const collectAll = await screen.findByRole('button', { name: 'Собрать источники · 2' })
     fireEvent.click(collectAll)
     fireEvent.click(collectAll)
 
@@ -309,7 +309,7 @@ describe('source card actions', () => {
 
   it('treats a failed HTTP 200 report as an alert and refreshes error state', async () => {
     renderSources()
-    const card = await sourceCard('Отраслевой Telegram-архив (demo)')
+    const card = await sourceCard('Тестовый Telegram-канал')
     fireEvent.click(within(card).getByRole('button', { name: 'Запустить сбор' }))
 
     const result = await within(card).findByRole('alert', { name: 'Результат сбора' })
@@ -364,6 +364,8 @@ describe('source card actions', () => {
     const secondCard = await sourceCard(sources[1].name)
     fireEvent.click(within(secondCard).getByRole('button', { name: 'Запустить сбор' }))
     expect(await within(secondCard).findByRole('alert')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: sources[2].name })).toBeInTheDocument()
+    expect(screen.getByRole('heading', {
+      name: sources[2].name.replace(/\s*\(demo\)\s*$/i, ''),
+    })).toBeInTheDocument()
   })
 })

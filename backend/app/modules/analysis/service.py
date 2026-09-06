@@ -17,7 +17,7 @@ from backend.app.modules.analysis.models import AnalysisVersion
 from backend.app.modules.prioritization.scorer import score_criteria
 from backend.app.modules.publications.models import Publication
 from backend.app.modules.publications.schemas import AnalysisVersionResponse, Analyzer
-from scripts.seed_core import content_hash
+from backend.app.modules.publications.hashing import content_hash
 
 
 def create_analysis_version(
@@ -60,7 +60,7 @@ def create_analysis_version(
         ) from error
 
     if analyzer_kind is Analyzer.LIVE_LLM:
-        scoring = score_criteria(draft.criteria)
+        scoring = score_criteria(draft.criteria, draft.proposed_priority)
         draft = draft.model_copy(
             update={
                 "importance_score": scoring.importance_score,

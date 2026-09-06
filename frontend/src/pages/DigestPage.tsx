@@ -13,6 +13,8 @@ import {
 import { formatDate } from '../shared/format'
 import { PageState } from '../shared/PageState'
 import { RevealText } from '../shared/RevealText'
+import { api } from '../shared/api/client'
+import type { TelegramDigestSettings } from '../shared/api/types'
 
 type DigestState =
   | { status: 'loading'; snapshot: DigestSnapshot | null }
@@ -21,7 +23,7 @@ type DigestState =
 
 const counterItems = [
   { key: 'critical_materials', label: 'Критические' },
-  { key: 'lifecycle_changes', label: 'Стадии НПА' },
+  { key: 'lifecycle_changes', label: 'Изменения документов' },
   { key: 'review_queue', label: 'На проверке' },
   { key: 'user_actions', label: 'Действия' },
 ] as const
@@ -37,6 +39,7 @@ function SectionEmpty({ message }: { message: string }) {
 export function DigestPage() {
   const [requestVersion, setRequestVersion] = useState(0)
   const [state, setState] = useState<DigestState>({ status: 'loading', snapshot: null })
+  const [deliveryStatus, setDeliveryStatus] = useState('')
 
   useEffect(() => {
     const controller = new AbortController()
@@ -87,7 +90,7 @@ export function DigestPage() {
           <p className="eyebrow">Все доступные данные</p>
           <RevealText lines={['Дайджест для', 'руководителя']} />
           <p className="page-description">
-            Подтверждённые сигналы, изменения НПА, очередь проверки и сохранённые действия команды.
+            Подтверждённые сигналы, изменения нормативных документов, очередь проверки и действия команды.
           </p>
         </div>
         <div className="digest-heading-actions" aria-label="Действия с дайджестом">
@@ -99,6 +102,30 @@ export function DigestPage() {
           >
             {state.status === 'loading' ? 'Обновляем…' : 'Обновить'}
           </button>
+          <button
+            className="digest-button"
+            type="button"
+            disabled={!canExport}
+            onClick={() => {
+              if (!canExport) return
+              setDeliveryStatus('Отправляем в Telegram…')
+              void api.deliverReportToTelegram(
+                serializeDigestMarkdown(state.snapshot),
+              ).then((delivery) => {
+                setDeliveryStatus(
+                  delivery.message_count === 1
+                    ? 'Отчёт отправлен в Telegram.'
+                    : `Отчёт отправлен в Telegram: ${delivery.message_count} сообщения.`,
+                )
+              }).catch((error) => {
+                setDeliveryStatus(
+                  error instanceof Error ? error.message : 'Не удалось отправить отчёт.',
+                )
+              })
+            }}
+          >
+            Отправить в Telegram
+          </button>
           <button className="digest-button" type="button" disabled={!canExport} onClick={downloadJson}>
             Скачать JSON
           </button>
@@ -107,19 +134,14 @@ export function DigestPage() {
           </button>
         </div>
       </header>
-
-      <aside className="contract-notice" aria-label="Статус API дайджеста">
-        <strong>Клиентский снимок</strong>
-        <p>
-          Клиентский снимок по текущим данным. Серверное API и хранение версий дайджеста пока не предусмотрены.
-        </p>
-      </aside>
+      {deliveryStatus && <p className="action-message" role="status">{deliveryStatus}</p>}
+      <TelegramAutomaticReports />
 
       {state.status === 'loading' && (
         <PageState
           kind="loading"
           title="Формируем дайджест"
-          message="Загружаем все публикации, решения и официальные события НПА."
+          message="Загружаем публикации, решения и изменения нормативных документов."
         />
       )}
 
@@ -145,6 +167,70 @@ export function DigestPage() {
   )
 }
 
+function TelegramAutomaticReports() {
+  const [settings, setSettings] = useState<TelegramDigestSettings | null>(null)
+  const [status, setStatus] = useState('')
+
+  useEffect(() => {
+    const controller = new AbortController()
+    api.getMyTelegramDigestSettings(controller.signal)
+      .then(setSettings)
+      .catch(() => setStatus('Настройки автоотчётов временно недоступны.'))
+    return () => controller.abort()
+  }, [])
+
+  const update = (patch: { enabled?: boolean; minimum_priority?: 'critical' | 'high' | 'medium' | 'low' }) => {
+    setStatus('Сохраняем…')
+    void api.updateMyTelegramDigestSettings(patch).then((next) => {
+      setSettings(next)
+      setStatus('Настройки сохранены.')
+    }).catch((error) => {
+      setStatus(error instanceof Error ? error.message : 'Не удалось сохранить настройки.')
+    })
+  }
+
+  return (
+    <aside className="telegram-digest-settings" aria-label="Автоматические отчёты в Telegram">
+      <div>
+        <strong>Автоотчёт в Telegram</strong>
+        <p>
+          После обновления источников бот присылает только новые релевантные события с AI-саммари и ссылками на первоисточники.
+        </p>
+      </div>
+      {settings?.available ? (
+        <div className="telegram-digest-controls">
+          <label>
+            <input
+              type="checkbox"
+              checked={settings.enabled}
+              onChange={(event) => update({ enabled: event.target.checked })}
+            />
+            Получать автоматически
+          </label>
+          <label>
+            <span>Не ниже приоритета</span>
+            <select
+              aria-label="Минимальный приоритет автоотчёта"
+              value={settings.minimum_priority}
+              onChange={(event) => update({
+                minimum_priority: event.target.value as 'critical' | 'high' | 'medium' | 'low',
+              })}
+            >
+              <option value="critical">Критический</option>
+              <option value="high">Высокий</option>
+              <option value="medium">Средний</option>
+              <option value="low">Низкий</option>
+            </select>
+          </label>
+        </div>
+      ) : settings ? (
+        <p className="telegram-digest-hint">Откройте этот раздел внутри Telegram Mini App, чтобы включить автоотчёты.</p>
+      ) : null}
+      {status && <p className="telegram-digest-status" role="status">{status}</p>}
+    </aside>
+  )
+}
+
 function DigestContent({ snapshot }: { snapshot: DigestSnapshot }) {
   const total = Object.values(snapshot.summary).reduce((sum, count) => sum + count, 0)
 
@@ -152,8 +238,6 @@ function DigestContent({ snapshot }: { snapshot: DigestSnapshot }) {
     <div className="digest-content">
       <div className="digest-metadata">
         <p><span>Сформирован</span><strong>{formatDate(snapshot.generated_at)}</strong></p>
-        <p><span>Scope</span><strong>{snapshot.scope.kind}</strong></p>
-        <p><span>Версия схемы</span><strong>{snapshot.schema_version}</strong></p>
       </div>
 
       <dl className="digest-counters" role="group" aria-label="Сводные счётчики">
@@ -208,11 +292,11 @@ function DigestContent({ snapshot }: { snapshot: DigestSnapshot }) {
         <DigestSectionHeading
           index="02"
           id="digest-lifecycle-heading"
-          title="Изменения стадий НПА"
+          title="Изменения нормативных документов"
           count={snapshot.lifecycle_changes.length}
         />
         {snapshot.lifecycle_changes.length === 0 ? (
-          <SectionEmpty message="Нет официально подтверждённых событий в timeline кейсов НПА." />
+          <SectionEmpty message="Нет официально подтверждённых изменений нормативных актов." />
         ) : (
           <ol className="digest-timeline">
             {snapshot.lifecycle_changes.map((item) => (

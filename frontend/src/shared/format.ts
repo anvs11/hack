@@ -29,3 +29,14 @@ export function formatDate(value: string) {
     timeStyle: 'short',
   }).format(new Date(value))
 }
+
+export function formatSourceName(value: string) {
+  return value
+}
+
+export function formatActor(value: string) {
+  if (value === 'local:gr') return 'GR-специалист'
+  if (value === 'local:pr') return 'PR-специалист'
+  if (value === 'local:manager') return 'Руководитель'
+  return value
+}

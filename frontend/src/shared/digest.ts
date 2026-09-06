@@ -457,7 +457,7 @@ export function serializeDigestMarkdown(snapshot: DigestSnapshot) {
     `- Официальное подтверждение: ${confirmationSourceLabels[item.confirmation_source_type]}`,
     `- Комментарий: ${markdownValue(item.comment)}`,
     `- Автор: ${escapeMarkdown(item.author_id)}`,
-    `- [Карточка НПА](${item.case_path})`,
+    `- [Досье документа](${item.case_path})`,
     `- [Официальный источник](${markdownUrl(item.confirmation_url)})`,
   ].join('\n'))
 
@@ -487,7 +487,7 @@ export function serializeDigestMarkdown(snapshot: DigestSnapshot) {
         `- [Карточка публикации](${item.publication_path})`,
       ].join('\n')
     : [
-        `### Событие НПА · ${escapeMarkdown(item.case_title)}`,
+        `### Изменение документа · ${escapeMarkdown(item.case_title)}`,
         '',
         `- Зафиксированная стадия: ${stageLabels[item.stage]}`,
         `- Официальный источник: ${confirmationSourceLabels[item.confirmation_source_type]}`,
@@ -495,7 +495,7 @@ export function serializeDigestMarkdown(snapshot: DigestSnapshot) {
         `- Автор: ${escapeMarkdown(item.author_id)}`,
         `- Дата действия: ${markdownDate(item.created_at)}`,
         `- Фактическая дата: ${markdownDate(item.occurred_at)}`,
-        `- [Карточка НПА](${item.case_path})`,
+        `- [Досье документа](${item.case_path})`,
         `- [Официальный источник](${markdownUrl(item.confirmation_url)})`,
       ].join('\n'))
 
@@ -511,12 +511,12 @@ export function serializeDigestMarkdown(snapshot: DigestSnapshot) {
     '## Сводка',
     '',
     `- Подтверждённые критические материалы: ${snapshot.summary.critical_materials}`,
-    `- Изменения стадий НПА: ${snapshot.summary.lifecycle_changes}`,
+    `- Изменения нормативных документов: ${snapshot.summary.lifecycle_changes}`,
     `- Требующие проверки карточки: ${snapshot.summary.review_queue}`,
     `- Действия пользователей: ${snapshot.summary.user_actions}`,
     '',
     renderMarkdownSection('Подтверждённые критические материалы', critical),
-    renderMarkdownSection('Изменения стадий НПА', lifecycle),
+    renderMarkdownSection('Изменения нормативных документов', lifecycle),
     renderMarkdownSection('Требующие проверки карточки', review),
     renderMarkdownSection('Действия пользователей', actions),
   ].join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n'

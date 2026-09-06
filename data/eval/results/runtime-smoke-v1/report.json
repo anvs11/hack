@@ -1,0 +1,116 @@
+{
+  "measurement": {
+    "kind": "runtime_smoke",
+    "created_at": "2026-09-06T11:30:22.338290+00:00",
+    "environment": {
+      "python": "3.14.4",
+      "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+      "api_base_url": "http://127.0.0.1:8000",
+      "database": ".local/live.sqlite3"
+    },
+    "sla_claim_allowed": false,
+    "reason": "Sequential local requests and historical stored items do not measure production load or a full steady-state observation window."
+  },
+  "orientations": {
+    "api_response_seconds": 1.0,
+    "publication_to_feed_seconds": {
+      "rss": 900,
+      "telegram": 900,
+      "regulator": 3600
+    }
+  },
+  "api": {
+    "feed": {
+      "path": "/api/publications?limit=20",
+      "successful_requests": 30,
+      "failed_requests": 0,
+      "errors": [],
+      "sample_count": 30,
+      "median_seconds": 0.125092,
+      "p95_seconds": 0.133124,
+      "max_seconds": 0.133239,
+      "target_seconds": 1.0,
+      "target_operator": "less_than",
+      "within_target_count": 30,
+      "within_target_rate": 1.0,
+      "orientation_met_in_this_sample": true
+    },
+    "search": {
+      "path": "/api/publications?q=%D0%BF%D1%80%D0%B0%D0%B2%D0%B8%D1%82%D0%B5%D0%BB%D1%8C%D1%81%D1%82%D0%B2%D0%BE&limit=20",
+      "successful_requests": 30,
+      "failed_requests": 0,
+      "errors": [],
+      "sample_count": 30,
+      "median_seconds": 0.127241,
+      "p95_seconds": 0.131711,
+      "max_seconds": 0.135468,
+      "target_seconds": 1.0,
+      "target_operator": "less_than",
+      "within_target_count": 30,
+      "within_target_rate": 1.0,
+      "orientation_met_in_this_sample": true
+    },
+    "filters": {
+      "path": "/api/publications?category=regulation&proposed_priority=high&limit=20",
+      "successful_requests": 30,
+      "failed_requests": 0,
+      "errors": [],
+      "sample_count": 30,
+      "median_seconds": 0.123992,
+      "p95_seconds": 0.126616,
+      "max_seconds": 0.13482,
+      "target_seconds": 1.0,
+      "target_operator": "less_than",
+      "within_target_count": 30,
+      "within_target_rate": 1.0,
+      "orientation_met_in_this_sample": true
+    }
+  },
+  "collection_lag": {
+    "scope": "all stored primary publications and folded source references",
+    "published_since": null,
+    "interpretation": "Historical backfill is included. This is an observed lag diagnostic, not a steady-state scheduler SLA measurement.",
+    "candidate_count": 385,
+    "valid_observation_count": 385,
+    "missing_collected_at_count": 0,
+    "invalid_timestamp_count": 0,
+    "negative_lag_count": 0,
+    "unsupported_source_type_count": 0,
+    "excluded_before_window_count": 0,
+    "by_source_type": {
+      "regulator": {
+        "sample_count": 1,
+        "median_seconds": 3668027.119457,
+        "p95_seconds": 3668027.119457,
+        "max_seconds": 3668027.119457,
+        "target_seconds": 3600,
+        "target_operator": "less_than_or_equal",
+        "within_target_count": 0,
+        "within_target_rate": 0.0,
+        "orientation_met_in_this_sample": false
+      },
+      "rss": {
+        "sample_count": 243,
+        "median_seconds": 779070.36993,
+        "p95_seconds": 4097582.007716,
+        "max_seconds": 25526553.480048,
+        "target_seconds": 900,
+        "target_operator": "less_than_or_equal",
+        "within_target_count": 0,
+        "within_target_rate": 0.0,
+        "orientation_met_in_this_sample": false
+      },
+      "telegram": {
+        "sample_count": 141,
+        "median_seconds": 306597.606022,
+        "p95_seconds": 7395036.609293,
+        "max_seconds": 11534579.609293,
+        "target_seconds": 900,
+        "target_operator": "less_than_or_equal",
+        "within_target_count": 1,
+        "within_target_rate": 0.007092,
+        "orientation_met_in_this_sample": false
+      }
+    }
+  }
+}

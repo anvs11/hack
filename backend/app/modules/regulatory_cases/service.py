@@ -1,5 +1,6 @@
 """Transactional regulatory-case and append-only lifecycle operations."""
 
+import json
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -13,12 +14,17 @@ from backend.app.modules.regulatory_cases.models import (
     RegulatoryCase as RegulatoryCaseModel,
     RegulatoryCasePublication,
 )
+from backend.app.modules.regulatory_cases.candidates import (
+    RegulatoryCaseCandidate,
+    extract_regulatory_case_candidates,
+)
 from backend.app.modules.regulatory_cases.schemas import (
     LifecycleEventCreate,
     LifecycleEventResponse,
     LifecycleStage,
     RegulatoryCaseCreate,
     RegulatoryCaseDetail,
+    RegulatoryCaseOrigin,
     RegulatoryCaseResponse,
 )
 
@@ -51,7 +57,10 @@ def is_valid_transition(
 
 def list_regulatory_cases(session: Session) -> list[RegulatoryCaseResponse]:
     rows = session.scalars(
-        select(RegulatoryCaseModel).order_by(RegulatoryCaseModel.id)
+        select(RegulatoryCaseModel).order_by(
+            RegulatoryCaseModel.updated_at.desc(),
+            RegulatoryCaseModel.id,
+        )
     ).all()
     links = _links_by_case(session)
     return [_case_response(row, links.get(row.id, [])) for row in rows]
@@ -96,6 +105,9 @@ def create_regulatory_case(
         registration_number=request.registration_number,
         current_stage=request.current_stage.value,
         responsible_user_id=request.responsible_user_id,
+        origin=RegulatoryCaseOrigin.MANUAL.value,
+        needs_review=0,
+        identifier_key=None,
         created_at=now,
         updated_at=now,
     )
@@ -184,6 +196,7 @@ def create_lifecycle_event(
         )
         session.add(event)
         case.current_stage = request.stage.value
+        case.needs_review = 0
         case.updated_at = now
         session.flush()
 
@@ -232,6 +245,49 @@ def link_publication_to_case(
         session.flush()
 
 
+def reconcile_publication_regulatory_cases(
+    session: Session,
+    publication_id: str,
+) -> int:
+    """Create or update draft dossiers for explicit NPA references.
+
+    This writes no lifecycle event and never changes an existing stage. A news
+    publication is evidence to inspect, not an official confirmation of law.
+    The return value is the number of candidate references reconciled.
+    """
+
+    with session.begin():
+        publication = session.get(Publication, publication_id)
+        if publication is None:
+            return 0
+        payload = json.loads(publication.payload_json)
+        text = "\n".join(
+            str(payload.get(field, ""))
+            for field in ("title", "content")
+        )
+        candidates = extract_regulatory_case_candidates(text)
+        for candidate in candidates:
+            case = _find_case_for_candidate(session, candidate)
+            if case is None:
+                now = _utc_iso(datetime.now(UTC))
+                case = RegulatoryCaseModel(
+                    id=f"case-{uuid4()}",
+                    title=candidate.title,
+                    registration_number=candidate.registration_number,
+                    current_stage=LifecycleStage.DRAFT.value,
+                    responsible_user_id="unassigned",
+                    origin=RegulatoryCaseOrigin.AUTOMATIC.value,
+                    needs_review=1,
+                    identifier_key=candidate.identifier_key,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(case)
+                session.flush()
+            _link_publication_in_transaction(session, case, publication.id)
+    return len(candidates)
+
+
 def _links_by_case(session: Session) -> dict[str, list[str]]:
     rows = session.execute(
         select(
@@ -248,6 +304,49 @@ def _links_by_case(session: Session) -> dict[str, list[str]]:
     return links
 
 
+def _find_case_for_candidate(
+    session: Session,
+    candidate: RegulatoryCaseCandidate,
+) -> RegulatoryCaseModel | None:
+    case = session.scalar(
+        select(RegulatoryCaseModel).where(
+            RegulatoryCaseModel.identifier_key == candidate.identifier_key
+        )
+    )
+    if case is not None:
+        return case
+    return session.scalar(
+        select(RegulatoryCaseModel).where(
+            RegulatoryCaseModel.registration_number == candidate.registration_number
+        )
+    )
+
+
+def _link_publication_in_transaction(
+    session: Session,
+    case: RegulatoryCaseModel,
+    publication_id: str,
+) -> None:
+    existing = session.scalar(
+        select(RegulatoryCasePublication).where(
+            RegulatoryCasePublication.case_id == case.id,
+            RegulatoryCasePublication.publication_id == publication_id,
+        )
+    )
+    if existing is not None:
+        return
+    now = _utc_iso(datetime.now(UTC))
+    session.add(
+        RegulatoryCasePublication(
+            id=f"case-publication-{uuid4().hex}",
+            case_id=case.id,
+            publication_id=publication_id,
+            created_at=now,
+        )
+    )
+    case.updated_at = now
+
+
 def _case_response(
     row: RegulatoryCaseModel,
     publication_ids: list[str],
@@ -258,6 +357,8 @@ def _case_response(
         registration_number=row.registration_number,
         current_stage=row.current_stage,
         responsible_user_id=row.responsible_user_id,
+        origin=row.origin,
+        needs_review=bool(row.needs_review),
         related_publication_ids=publication_ids,
         created_at=row.created_at,
         updated_at=row.updated_at,

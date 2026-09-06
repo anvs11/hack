@@ -15,9 +15,10 @@ import {
   type ReportDraft,
   type ReportItem,
 } from '../shared/report'
-import { formatCategory, formatDate, formatPriority } from '../shared/format'
+import { formatCategory, formatDate, formatPriority, formatSourceName } from '../shared/format'
 import { sourceTypeLabel } from '../shared/feedQuery'
 import { PageState } from '../shared/PageState'
+import { getTelegramRuntimeInfo } from '../shared/telegram/adapter'
 
 export function ReportPage() {
   const [params] = useSearchParams()
@@ -97,6 +98,21 @@ function ManualReport() {
         : 'application/json;charset=utf-8',
     )
     setNotice(`Скачан отчёт: ${report.draft.items.length} материалов.`)
+  }
+  async function sendToTelegram() {
+    setNotice('Отправляем отчёт в Telegram…')
+    try {
+      const result = await api.deliverReportToTelegram(reportMarkdown(report.draft))
+      setNotice(
+        `Отчёт отправлен в Telegram (${result.message_count} сообщений).`,
+      )
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? `Не удалось отправить отчёт: ${error.message}`
+          : 'Не удалось отправить отчёт в Telegram.',
+      )
+    }
   }
   if (preview)
     return (
@@ -198,7 +214,7 @@ function ManualReport() {
                       </Link>
                     </h2>
                     <div className="card-meta">
-                      <span>{item.source?.name ?? p.source_id}</span>
+                      <span>{formatSourceName(item.source?.name ?? p.source_id)}</span>
                       <span>{formatDate(p.published_at)}</span>
                     </div>
                   </div>
@@ -308,6 +324,20 @@ function ManualReport() {
           <Link className="report-open" to="/digest?view=print">
             Печатный вид / PDF <span aria-hidden="true">↗</span>
           </Link>
+          <button
+            disabled={
+              !report.draft.items.length ||
+              !getTelegramRuntimeInfo().hasInitData
+            }
+            onClick={() => void sendToTelegram()}
+            title={
+              getTelegramRuntimeInfo().hasInitData
+                ? undefined
+                : 'Откройте отчёт внутри Telegram Mini App'
+            }
+          >
+            Отправить в Telegram <span aria-hidden="true">→</span>
+          </button>
           <hr />
           <p className="report-save-note">
             {report.warning
@@ -345,12 +375,6 @@ function SnapshotStatus({ item }: { item: ReportItem }) {
         >
           AI-приоритет · {formatPriority(a?.proposed_priority ?? 'unknown')}
         </span>
-        <span className="score">
-          Важность:{' '}
-          {a?.importance_score == null
-            ? 'Нет данных'
-            : `${a.importance_score} / 18`}
-        </span>
       </div>
       <p className="decision-line">
         <span>{decisionStatus(item.detail)}</span>
@@ -362,9 +386,6 @@ function SnapshotStatus({ item }: { item: ReportItem }) {
             : 'Нет AI-анализа'}
         </span>
         {item.detail.publication.is_hidden && <span>Скрытая публикация</span>}
-        {item.detail.publication.is_demo && (
-          <span>Демонстрационные данные</span>
-        )}
       </p>
       {d && (
         <p className="preview-version">
@@ -405,7 +426,7 @@ export function ReportPreview({ draft }: { draft: ReportDraft }) {
               {index + 1}. {p.title}
             </h2>
             <div className="preview-meta">
-              <span>{item.source?.name ?? p.source_id}</span>
+              <span>{formatSourceName(item.source?.name ?? p.source_id)}</span>
               <span>{sourceTypeLabel(item.source?.type)}</span>
               <span>{formatDate(p.published_at)}</span>
             </div>

@@ -10,8 +10,10 @@ from sqlalchemy.orm import Session
 from backend.app.db import build_engine
 from backend.app.main import create_app
 from backend.app.modules.publications.models import Publication
+from backend.app.modules.regulatory_cases.models import LifecycleEvent, RegulatoryCase
 from backend.app.modules.sources.collection_service import collect_source
 from backend.app.modules.sources.models import DuplicateCandidate, Source
+from backend.tests.seed import seed_test_database
 
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -22,8 +24,8 @@ def client_with_seed(
     tmp_path: Path,
 ) -> Generator[tuple[TestClient, Engine], None, None]:
     engine = build_engine(f"sqlite:///{tmp_path / 'collection.sqlite3'}")
+    seed_test_database(engine)
     with TestClient(create_app(database_engine=engine)) as client:
-        assert client.post("/api/demo/seed").status_code == 200
         yield client, engine
     engine.dispose()
 
@@ -70,6 +72,14 @@ def test_collect_file_source_deduplicates_at_all_exact_levels(
         }
     ]
     assert _publication_count(engine) == 11
+    references = client.get("/api/publications/pub-002").json()["publication"][
+        "source_references"
+    ]
+    assert len(references) == 2
+    assert {item["original_url"] for item in references} == {
+        "https://example.org/duma/demo-law-002",
+        "https://example.org/offline/duplicate-content",
+    }
     with Session(engine) as session:
         row = session.get(Source, source["id"])
         assert row is not None
@@ -89,8 +99,8 @@ def test_collect_file_source_deduplicates_at_all_exact_levels(
 
     assert second.status_code == 200
     assert second.json()["created"] == 0
-    assert second.json()["already_seen"] == 3
-    assert second.json()["content_duplicates"] == 1
+    assert second.json()["already_seen"] == 4
+    assert second.json()["content_duplicates"] == 0
     assert second.json()["exact_duplicates"] == 4
     assert _publication_count(engine) == 11
     with Session(engine) as session:
@@ -98,8 +108,8 @@ def test_collect_file_source_deduplicates_at_all_exact_levels(
         assert row is not None
         payload = json.loads(row.payload_json)
         assert payload["last_collection"]["created"] == 0
-        assert payload["last_collection"]["already_seen"] == 3
-        assert payload["last_collection"]["content_duplicates"] == 1
+        assert payload["last_collection"]["already_seen"] == 4
+        assert payload["last_collection"]["content_duplicates"] == 0
         assert payload["last_collection"]["exact_duplicates"] == 4
 
 
@@ -131,6 +141,31 @@ def test_collect_enabled_sources_reports_partial_failure(
     assert sources[valid["id"]]["last_error"] is None
     assert sources[invalid["id"]]["last_success_at"] is None
     assert sources[invalid["id"]]["last_error"] is not None
+
+
+def test_collection_creates_a_reviewable_npa_draft_for_an_explicit_document_number(
+    client_with_seed: tuple[TestClient, Engine],
+) -> None:
+    client, engine = client_with_seed
+    source = _create_file_source(client, FIXTURES / "npa-feed.json", "NPA feed")
+
+    response = client.post(f"/api/sources/{source['id']}/collections")
+
+    assert response.status_code == 200
+    assert response.json()["created"] == 1
+    with Session(engine) as session:
+        case = session.scalar(
+            select(RegulatoryCase).where(RegulatoryCase.origin == "automatic")
+        )
+        assert case is not None
+        assert case.registration_number == "ФЗ № 321-ФЗ"
+        assert case.current_stage == "draft"
+        assert case.needs_review == 1
+        assert session.scalar(select(func.count()).select_from(LifecycleEvent)) == 0
+        case_id = case.id
+    detail = client.get(f"/api/regulatory-cases/{case_id}")
+    assert detail.status_code == 200
+    assert len(detail.json()["regulatory_case"]["related_publication_ids"]) == 1
 
 
 def test_semantic_comparison_saves_candidate_but_does_not_delete(

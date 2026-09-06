@@ -14,7 +14,7 @@ import type {
   RegulatoryCaseDetail,
   Source,
 } from '../shared/api/types'
-import { formatDate } from '../shared/format'
+import { formatActor, formatDate } from '../shared/format'
 import { PageState } from '../shared/PageState'
 import { RevealText } from '../shared/RevealText'
 import { getCurrentActorId } from '../shared/telegram/adapter'
@@ -119,11 +119,11 @@ export function RegulatoryCasePage() {
   }, [id])
 
   if (state.status === 'loading') {
-    return <PageState kind="loading" title="Открываем кейс НПА" message={`ID: ${id}`} />
+    return <PageState kind="loading" title="Открываем досье документа" message="Загружаем историю и связанные материалы." />
   }
 
   if (state.status === 'error') {
-    return <PageState kind="error" title="Кейс не загрузился" message={state.error.message} />
+    return <PageState kind="error" title="Досье не загрузилось" message={state.error.message} />
   }
 
   const { detail, relatedPublications, sources } = state.data
@@ -138,9 +138,9 @@ export function RegulatoryCasePage() {
     <article className="regulatory-case-page">
       <header className="page-heading">
         <div>
-          <p className="eyebrow">Кейс НПА · {regulatoryCase.registration_number}</p>
+          <p className="eyebrow">Досье документа · {regulatoryCase.registration_number}</p>
           <RevealText lines={[regulatoryCase.title]} />
-          <p className="page-description">Ответственный: {regulatoryCase.responsible_user_id}</p>
+          <p className="page-description">Ответственный: {formatActor(regulatoryCase.responsible_user_id)}</p>
         </div>
         <div className="stage-card">
           <span className="status-dot" aria-hidden="true" />
@@ -149,14 +149,24 @@ export function RegulatoryCasePage() {
         </div>
       </header>
 
+      {regulatoryCase.needs_review && (
+        <section className="case-review-notice" aria-label="Требуется проверка досье">
+          <strong>Черновик создан автоматически.</strong>
+          <span>
+            Проверьте реквизиты документа и добавьте официальное подтверждение:
+            только после этого его стадия считается подтверждённой.
+          </span>
+        </section>
+      )}
+
       <section className="timeline-section" aria-labelledby="timeline-heading">
-        <p className="eyebrow">Append-only history</p>
+        <p className="eyebrow">История документа</p>
         <div className="timeline-title-row">
           <h2 id="timeline-heading">Хронология</h2>
-          <span>Новые события только добавляются</span>
+          <span>Предыдущие события сохраняются</span>
         </div>
         {timeline.length === 0 ? (
-          <PageState kind="empty" title="Событий пока нет" message="В lifecycle ещё не добавлено ни одного события." />
+          <PageState kind="empty" title="Событий пока нет" message="История документа ещё не заполнена." />
         ) : (
           <ol className="timeline" aria-label="Хронология">
             {timeline.map((event, index) => (
@@ -171,7 +181,7 @@ export function RegulatoryCasePage() {
                   <h3>{stageLabels[event.stage]}</h3>
                   <dl className="timeline-details">
                     <div><dt>Комментарий</dt><dd>{event.comment ?? 'Комментарий отсутствует'}</dd></div>
-                    <div><dt>Автор события</dt><dd>{event.author_id}</dd></div>
+                    <div><dt>Автор события</dt><dd>{formatActor(event.author_id)}</dd></div>
                   </dl>
                   <a href={event.confirmation_url} target="_blank" rel="noreferrer">Официальное подтверждение ↗</a>
                 </div>
@@ -194,7 +204,7 @@ export function RegulatoryCasePage() {
           </div>
         </div>
         <p className="evidence-notice">
-          СМИ и Telegram являются только дополнительными материалами и не подтверждают стадию НПА.
+          СМИ и Telegram являются дополнительными материалами и сами по себе не подтверждают стадию документа.
         </p>
         <LifecycleEventForm
           caseId={regulatoryCase.id}
@@ -219,7 +229,7 @@ function RelatedPublications({
     <section className="related-publications-section" aria-labelledby="related-publications-heading">
       <div className="section-heading compact-heading">
         <div>
-          <p className="eyebrow">Контекст кейса</p>
+          <p className="eyebrow">Материалы документа</p>
           <h2 id="related-publications-heading">Связанные публикации</h2>
         </div>
         <span className="history-count">{publications.length} материалов</span>
@@ -234,17 +244,16 @@ function RelatedPublications({
           {publications.map(({ id, detail }) => {
             const publication = detail?.publication
             const source = sources.find((item) => item.id === publication?.source_id)
-            const isTelegram = source?.type === 'telegram' || source?.type === 'telegram_archive'
+            const isTelegram = source?.type === 'telegram'
             return (
               <li key={id}>
                 <div>
                   <span className="related-publication-kind">
-                    {isTelegram ? 'Дополнительный материал · Telegram archive' : 'Дополнительный материал'}
+                    {isTelegram ? 'Дополнительный материал · Telegram' : 'Дополнительный материал'}
                   </span>
-                  <h3><Link to={`/publications/${id}`}>{publication?.title ?? `Публикация ${id}`}</Link></h3>
+                  <h3><Link to={`/publications/${id}`}>{publication?.title ?? 'Публикация недоступна'}</Link></h3>
                 </div>
                 <dl>
-                  <div><dt>ID</dt><dd>{id}</dd></div>
                   {publication && <div><dt>Дата</dt><dd>{formatDate(publication.published_at)}</dd></div>}
                   {publication && <div><dt>Источник</dt><dd>{source?.name ?? publication.source_id}</dd></div>}
                 </dl>
@@ -285,7 +294,6 @@ function LifecycleEventForm({
   const [confirmationUrl, setConfirmationUrl] = useState('')
   const [confirmationSourceType, setConfirmationSourceType] = useState<ConfirmationSourceType>('regulator')
   const [comment, setComment] = useState('')
-  const [authorId, setAuthorId] = useState(responsibleUserId)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [status, setStatus] = useState('')
@@ -317,7 +325,7 @@ function LifecycleEventForm({
       confirmation_url: confirmationUrl,
       confirmation_source_type: confirmationSourceType,
       comment: comment.trim() || null,
-      author_id: getCurrentActorId(authorId),
+      author_id: getCurrentActorId(responsibleUserId),
     }
 
     try {
@@ -390,10 +398,6 @@ function LifecycleEventForm({
       <label className="form-field form-field-wide">
         <span>Комментарий · необязательно</span>
         <textarea value={comment} onChange={(event) => setComment(event.target.value)} rows={4} />
-      </label>
-      <label className="form-field form-field-wide">
-        <span>Автор события</span>
-        <input required value={authorId} onChange={(event) => setAuthorId(event.target.value)} />
       </label>
       <div className="decision-actions form-field-wide">
         <div>

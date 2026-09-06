@@ -32,12 +32,14 @@ def list_duplicate_candidates(
         DuplicateFilterStatus,
         Query(alias="status"),
     ] = DuplicateFilterStatus.UNREVIEWED,
+    publication_id: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> DuplicateCandidateList:
     return read_candidates(
         session,
         status=None if status_filter is DuplicateFilterStatus.ALL else status_filter.value,
+        publication_id=publication_id,
         limit=limit,
         offset=offset,
     )

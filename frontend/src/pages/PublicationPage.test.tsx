@@ -35,12 +35,67 @@ function createdDecision(
 }
 
 describe('publication analysis card', () => {
+  it('opens a single primary source directly without an empty dropdown', async () => {
+    renderPublication()
+
+    const sourceLink = await screen.findByRole('link', {
+      name: 'Открыть первоисточник ↗',
+    })
+
+    expect(sourceLink).toHaveAttribute(
+      'href',
+      'https://example.org/regulation/demo-reg-001',
+    )
+    expect(screen.queryByText('Источники · 1')).not.toBeInTheDocument()
+  })
+
+  it('shows named links when one event has multiple primary sources', async () => {
+    const detail = {
+      ...publicationDetails[0],
+      publication: {
+        ...publicationDetails[0].publication,
+        source_references: [
+          ...publicationDetails[0].publication.source_references,
+          {
+            source_id: 'source-duma',
+            external_id: 'second-source',
+            title: 'Второй материал',
+            original_url: 'https://sozd.duma.gov.ru/second-source',
+            published_at: '2026-09-01T08:00:00Z',
+            collected_at: '2026-09-01T08:05:00Z',
+            is_primary: false,
+          },
+        ],
+      },
+    } satisfies PublicationDetail
+    server.use(
+      http.get('*/api/publications/pub-001', () => HttpResponse.json(detail)),
+    )
+    renderPublication()
+
+    fireEvent.click(await screen.findByText('Первоисточники · 2'))
+
+    expect(
+      screen.getByRole('link', { name: 'Портал проектов НПА ↗' }),
+    ).toHaveAttribute(
+      'href',
+      'https://example.org/regulation/demo-reg-001',
+    )
+    expect(
+      screen.getByRole('link', {
+        name: 'Система обеспечения законодательной деятельности ↗',
+      }),
+    ).toHaveAttribute('href', 'https://sozd.duma.gov.ru/second-source')
+    expect(screen.getByText('Главный')).toBeInTheDocument()
+  })
+
   it('renders the complete selected analysis including explicit zero and false values', async () => {
     renderPublication()
 
     expect(await screen.findByRole('heading', { name: 'Выбранная версия' })).toBeInTheDocument()
-    expect(screen.getByText('demo-replay-v2')).toBeInTheDocument()
-    expect(screen.getByText('analysis-v2')).toBeInTheDocument()
+    expect(screen.getByText('v2')).toBeInTheDocument()
+    expect(screen.queryByText('demo-replay-v2')).not.toBeInTheDocument()
+    expect(screen.queryByText('analysis-v2')).not.toBeInTheDocument()
     expect(screen.getByText('Опубликован проект требований')).toBeInTheDocument()
     expect(screen.getByText('обработка данных')).toBeInTheDocument()
     expect(screen.getAllByText('установил срок общественного обсуждения', { exact: false })).toHaveLength(2)
@@ -90,8 +145,20 @@ describe('publication analysis card', () => {
 
     expect(oldVersion).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('24%')).toBeInTheDocument()
-    expect(screen.getByText('demo-replay-v1')).toBeInTheDocument()
-    expect(screen.getByText('analysis-001 · v1')).toBeInTheDocument()
+    expect(screen.queryByText('demo-replay-v1')).not.toBeInTheDocument()
+    expect(screen.getByText('Шаг 2 · AI-анализ · v1')).toBeInTheDocument()
+  })
+
+  it('reviews a possible duplicate inside the publication card', async () => {
+    renderPublication()
+
+    expect(await screen.findByRole('heading', { name: 'Это может быть то же событие' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Объединить источники' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'В мониторинге останется одна карточка события.',
+    )
+    expect(screen.queryByRole('heading', { name: 'Это может быть то же событие' })).not.toBeInTheDocument()
   })
 
   it('renders the latest specialist decision separately from the AI suggestion', async () => {
@@ -122,7 +189,7 @@ describe('publication analysis card', () => {
     server.use(
       http.get('*/api/publications/pub-001', () => HttpResponse.json({
         ...publicationDetails[0],
-        publication: { ...publicationDetails[0].publication, is_demo: false },
+        publication: publicationDetails[0].publication,
       })),
       http.post('*/api/publications/pub-001/analyses', () => HttpResponse.json({
         code: 'analyzer_unavailable',
@@ -163,7 +230,7 @@ describe('specialist decision form', () => {
       final_category: 'regulation',
       final_priority: 'high',
       comment: 'Проверено',
-      author_id: 'user-gr-001',
+      author_id: 'local:gr',
     })
   })
 
@@ -259,15 +326,15 @@ describe('regulatory case linking dialog', () => {
       }),
     )
     renderPublication()
-    fireEvent.click(await screen.findByRole('button', { name: 'Привязать к НПА' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Добавить в досье' }))
 
-    expect(await screen.findByRole('dialog', { name: 'Привязать публикацию к НПА' })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'Добавить публикацию в досье документа' })).toBeInTheDocument()
     expect(screen.getByText(regulatoryCase.title)).toBeInTheDocument()
     expect(screen.getByText(/DEMO-2026-001 · draft/)).toBeInTheDocument()
     const confirm = screen.getByRole('button', { name: 'Подтвердить привязку' })
 
     fireEvent.click(confirm)
-    expect(await screen.findByRole('status')).toHaveTextContent('успешно привязана')
+    expect(await screen.findByRole('status')).toHaveTextContent('добавлена в досье')
     expect(screen.getByText('Уже привязана')).toBeInTheDocument()
     fireEvent.click(confirm)
     await waitFor(() => expect(puts).toBe(2))
@@ -277,18 +344,18 @@ describe('regulatory case linking dialog', () => {
   it('shows empty and controlled error states from the cases API', async () => {
     server.use(http.get('*/api/regulatory-cases', () => HttpResponse.json([])))
     renderPublication()
-    fireEvent.click(await screen.findByRole('button', { name: 'Привязать к НПА' }))
-    expect(await screen.findByText('Существующих кейсов НПА пока нет.')).toHaveAttribute('role', 'status')
+    fireEvent.click(await screen.findByRole('button', { name: 'Добавить в досье' }))
+    expect(await screen.findByText('Досье нормативных документов пока нет.')).toHaveAttribute('role', 'status')
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть диалог' }))
 
     server.use(http.get('*/api/regulatory-cases', () => HttpResponse.json({ message: 'Кейсы недоступны' }, { status: 500 })))
-    fireEvent.click(screen.getByRole('button', { name: 'Привязать к НПА' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить в досье' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Кейсы недоступны')
   })
 
   it('traps focus in the named dialog and restores it after Escape', async () => {
     renderPublication()
-    const opener = await screen.findByRole('button', { name: 'Привязать к НПА' })
+    const opener = await screen.findByRole('button', { name: 'Добавить в досье' })
     opener.focus()
     fireEvent.click(opener)
 
