@@ -20,6 +20,7 @@ SOURCE_IDS = (
     "source-telegram-archive",
 )
 PUBLICATION_IDS = tuple(f"pub-{index:03d}" for index in range(1, 11))
+PUBLICATION_URLS = ("https://example.org/regradar-production-smoke-2026-09-05",)
 CASE_IDS = ("case-001",)
 
 
@@ -45,7 +46,12 @@ def main() -> None:
 def _counts(connection: sqlite3.Connection) -> dict[str, int]:
     return {
         "sources": _count_ids(connection, "sources", "id", SOURCE_IDS),
-        "publications": _count_ids(connection, "publications", "id", PUBLICATION_IDS),
+        "publications": int(connection.execute(
+            f"SELECT COUNT(*) FROM publications WHERE id IN "
+            f"({','.join('?' for _ in PUBLICATION_IDS)}) OR canonical_url IN "
+            f"({','.join('?' for _ in PUBLICATION_URLS)})",
+            PUBLICATION_IDS + PUBLICATION_URLS,
+        ).fetchone()[0]),
         "regulatory_cases": _count_ids(connection, "regulatory_cases", "id", CASE_IDS),
     }
 
@@ -64,7 +70,18 @@ def _count_ids(
 
 
 def _delete_exact_seed(connection: sqlite3.Connection) -> None:
-    publications = ",".join("?" for _ in PUBLICATION_IDS)
+    publication_ids = tuple(
+        row[0]
+        for row in connection.execute(
+            f"SELECT id FROM publications WHERE id IN "
+            f"({','.join('?' for _ in PUBLICATION_IDS)}) OR canonical_url IN "
+            f"({','.join('?' for _ in PUBLICATION_URLS)})",
+            PUBLICATION_IDS + PUBLICATION_URLS,
+        )
+    )
+    if not publication_ids:
+        return
+    publications = ",".join("?" for _ in publication_ids)
     sources = ",".join("?" for _ in SOURCE_IDS)
     cases = ",".join("?" for _ in CASE_IDS)
 
@@ -72,7 +89,7 @@ def _delete_exact_seed(connection: sqlite3.Connection) -> None:
         f"publication_id IN ({publications}) OR "
         f"candidate_publication_id IN ({publications})"
     )
-    candidate_args = PUBLICATION_IDS + PUBLICATION_IDS
+    candidate_args = publication_ids + publication_ids
     tables = {
         row[0]
         for row in connection.execute(
@@ -94,7 +111,7 @@ def _delete_exact_seed(connection: sqlite3.Connection) -> None:
         connection.execute(
             f"DELETE FROM telegram_digest_deliveries WHERE analysis_id IN "
             f"(SELECT id FROM analysis_versions WHERE publication_id IN ({publications}))",
-            PUBLICATION_IDS,
+            publication_ids,
         )
     for table in (
         "specialist_decisions",
@@ -105,18 +122,18 @@ def _delete_exact_seed(connection: sqlite3.Connection) -> None:
         if table in tables:
             connection.execute(
                 f"DELETE FROM {table} WHERE publication_id IN ({publications})",
-                PUBLICATION_IDS,
+                publication_ids,
             )
     if "publication_source_references" in tables:
         connection.execute(
             f"DELETE FROM publication_source_references WHERE "
             f"publication_id IN ({publications}) OR source_id IN ({sources})",
-            PUBLICATION_IDS + SOURCE_IDS,
+            publication_ids + SOURCE_IDS,
         )
     connection.execute(
         f"DELETE FROM regulatory_case_publications WHERE "
         f"case_id IN ({cases}) OR publication_id IN ({publications})",
-        CASE_IDS + PUBLICATION_IDS,
+        CASE_IDS + publication_ids,
     )
     connection.execute(
         f"DELETE FROM lifecycle_events WHERE regulatory_case_id IN ({cases})",
@@ -128,7 +145,7 @@ def _delete_exact_seed(connection: sqlite3.Connection) -> None:
     )
     connection.execute(
         f"DELETE FROM publications WHERE id IN ({publications})",
-        PUBLICATION_IDS,
+        publication_ids,
     )
     connection.execute(
         f"DELETE FROM sources WHERE id IN ({sources})",
