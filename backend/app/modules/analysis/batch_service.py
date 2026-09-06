@@ -36,8 +36,8 @@ class AnalysisBatchReport:
 def analyze_pending_publications(
     session: Session,
     *,
-    limit: int = 20,
-    min_content_chars: int = 200,
+    limit: int = 100,
+    min_content_chars: int = 40,
 ) -> AnalysisBatchReport:
     """Create first live analysis versions without blocking collection forever."""
 
