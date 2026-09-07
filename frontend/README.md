@@ -1,8 +1,7 @@
-# Frontend аналитического центра Insight
+# Frontend RegRadar
 
 React + Vite + TypeScript интерфейс PR/GR-аналитического центра. Frontend
-использует React Router, типизированный API-клиент и MSW для автономного
-demo-режима.
+использует React Router, типизированный API-клиент и MSW в изолированных тестах.
 
 ## Обязательная инструкция по интерфейсу
 

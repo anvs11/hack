@@ -31,15 +31,15 @@
 Терминал 1:
 
 ```bash
-cd "/Users/egorleontenkov/Documents/ChatGPT/talent hack/hack"
+cd /path/to/hack
 PYTHONPATH=. .venv/bin/uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Терминал 2:
 
 ```bash
-cd "/Users/egorleontenkov/Documents/ChatGPT/talent hack/hack/frontend"
-VITE_API_BASE_URL=http://127.0.0.1:8000 pnpm run dev -- --host 127.0.0.1
+cd /path/to/hack/frontend
+VITE_API_BASE_URL=http://127.0.0.1:8000 npm run dev -- --host 127.0.0.1
 ```
 
 Открыть `http://127.0.0.1:5173/feed`.
@@ -317,16 +317,16 @@ PYTHONPATH=. .venv/bin/pytest -q
 Frontend:
 
 ```bash
-pnpm --dir frontend run typecheck
-pnpm --dir frontend run lint
-pnpm --dir frontend run test -- --run
-pnpm --dir frontend run build
+npm --prefix frontend run typecheck
+npm --prefix frontend run lint
+npm --prefix frontend run test -- --run
+npm --prefix frontend run build
 ```
 
 Изолированный E2E:
 
 ```bash
-pnpm --dir frontend run e2e
+npm --prefix frontend run e2e
 ```
 
 E2E использует временную БД и синтетические fixtures только внутри теста. Рабочая

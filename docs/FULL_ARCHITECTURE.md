@@ -2,7 +2,7 @@
 
 Статус: **объясняющий рабочий документ, не protected context**  
 Дата: 2026-09-05
-Связанный план реализации: [`BACKEND_TODO.md`](BACKEND_TODO.md)
+Реализованные функции и сценарии проверки: [`MVP_FEATURES_AND_TESTING.md`](MVP_FEATURES_AND_TESTING.md)
 
 Реестр кандидатов источников: [`SOURCE_INVENTORY.md`](SOURCE_INVENTORY.md)
 
