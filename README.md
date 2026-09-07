@@ -1,3 +1,5 @@
+[@reg_radar_product_hack_bot](https://t.me/reg_radar_product_hack_bot)
+
 <div align="center">
   <img src="frontend/public/favicon.svg" width="88" alt="RegRadar logo" />
   <h1>RegRadar</h1>
